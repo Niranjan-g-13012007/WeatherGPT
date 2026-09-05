@@ -1,0 +1,246 @@
+.weather-advisory-card {
+  background: var(--color-white);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.weather-advisory-card.compact {
+  padding: 16px;
+  gap: 12px;
+}
+
+/* Header */
+.advisory-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.advisory-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.advisory-badge-pulse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-sky-50);
+  color: var(--color-cyan-dark);
+}
+
+.advisory-title {
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-cyan-dark);
+  margin: 0;
+}
+
+.advisory-subtitle {
+  font-size: 0.72rem;
+  color: var(--color-navy-faint);
+}
+
+/* Period Toggle */
+.advisory-period-toggle {
+  display: flex;
+  background: var(--color-offwhite);
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-line);
+}
+
+.advisory-period-btn {
+  background: transparent;
+  border: none;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--color-navy-soft);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  transition: all 0.15s ease;
+}
+
+.advisory-period-btn.active {
+  background: var(--color-white);
+  color: var(--color-navy);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Context Tabs */
+.advisory-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--color-line);
+  padding-bottom: 8px;
+  overflow-x: auto;
+}
+
+.advisory-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-navy-soft);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.advisory-tab:hover {
+  background: var(--color-offwhite);
+  color: var(--color-navy);
+}
+
+.advisory-tab.active {
+  background: var(--color-sky-50);
+  border-color: var(--color-sky-100);
+  color: var(--color-cyan-dark);
+}
+
+/* Body */
+.advisory-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.advisory-headline {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--color-navy);
+  line-height: 1.35;
+  margin: 0;
+}
+
+.advisory-summary {
+  font-size: 0.85rem;
+  color: var(--color-navy-soft);
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* Metrics Strip */
+.advisory-metrics-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: var(--color-offwhite);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.advisory-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.advisory-metric svg {
+  color: var(--color-cyan);
+}
+
+.advisory-metric-label {
+  font-size: 0.68rem;
+  color: var(--color-navy-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.advisory-metric-val {
+  font-size: 0.88rem;
+  color: var(--color-navy);
+  font-weight: 700;
+}
+
+/* Recommendation Box */
+.advisory-recommendation-box {
+  background: #F4F9FD;
+  border-left: 3px solid var(--color-cyan);
+  border-radius: 4px var(--radius-sm) var(--radius-sm) 4px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.advisory-recommendation-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-cyan-dark);
+}
+
+.advisory-recommendation-text {
+  font-size: 0.84rem;
+  color: var(--color-navy);
+  line-height: 1.5;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Footer */
+.advisory-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--color-line);
+  padding-top: 10px;
+  font-size: 0.74rem;
+}
+
+.advisory-risk-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.advisory-risk-label {
+  color: var(--color-navy-faint);
+  font-weight: 500;
+}
+
+.advisory-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-navy-faint);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #1E9E6B;
+  box-shadow: 0 0 0 2px rgba(30, 158, 107, 0.2);
+}
+
+@media (max-width: 480px) {
+  .advisory-metrics-strip {
+    grid-template-columns: 1fr;
+  }
+}

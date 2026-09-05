@@ -8,11 +8,13 @@ import {
   PanelRightOpen,
   X,
   Sparkles,
+  Navigation,
+  AlertCircle,
 } from 'lucide-react'
 import { useLocationWeather } from '../context/LocationContext.jsx'
 import { LOCATIONS } from '../data/locations.js'
 import { fetchWeather, buildCurrentSnapshot } from '../services/weatherService.js'
-import { detectLocation, generateResponse } from '../utils/chatbot.js'
+import { detectLocation, resolveTargetLocation, generateResponse } from '../utils/chatbot.js'
 import { evaluateRisk } from '../utils/riskEngine.js'
 import ChatMessage, { TypingIndicator } from '../components/ChatMessage.jsx'
 import ChatInput from '../components/ChatInput.jsx'
@@ -23,12 +25,13 @@ import './Assistant.css'
 
 const SUGGESTIONS = [
   'Will it rain today?',
-  'Will it rain tomorrow?',
+  'Should I travel tomorrow?',
+  'Will it rain tomorrow in Ooty and should I travel?',
+  'Should I irrigate my crops tomorrow?',
   'Which weather model are you using?',
-  'Is it safe to travel this evening?',
-  'What is the weather this weekend?',
   "Give me today's weather summary.",
 ]
+
 
 function makeConversation(locationName) {
   return {
@@ -40,8 +43,20 @@ function makeConversation(locationName) {
 
 export default function Assistant() {
   const navigate = useNavigate()
-  const { location, setLocation, weatherData, snapshot, model, modelType, modelInfo, status, retry } =
-    useLocationWeather()
+  const {
+    location,
+    setLocation,
+    weatherData,
+    snapshot,
+    model,
+    modelType,
+    modelInfo,
+    status,
+    retry,
+    isDetectingLocation,
+    locationNotice,
+    clearLocationNotice,
+  } = useLocationWeather()
 
   const [conversations, setConversations] = useState(() => [makeConversation(location.name)])
   const [activeId, setActiveId] = useState(() => conversations[0]?.id)
@@ -73,7 +88,7 @@ export default function Assistant() {
 
     try {
       // 1. Detect location mentioned in user question (defaults to currently selected location)
-      const targetLocation = detectLocation(text, location, LOCATIONS)
+      const targetLocation = await resolveTargetLocation(text, location, LOCATIONS)
 
       let activeLocationName = location.name
       let activeWeatherData = weatherData
@@ -187,6 +202,22 @@ export default function Assistant() {
           </div>
         </header>
 
+        {isDetectingLocation && (
+          <div className="assistant-location-banner info">
+            <Navigation size={13} className="banner-spinner" />
+            <span>Detecting your location...</span>
+          </div>
+        )}
+
+        {locationNotice && (
+          <div className="assistant-location-banner warning">
+            <span>{locationNotice}</span>
+            <button onClick={clearLocationNotice} className="assistant-banner-close">
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="assistant-chat" ref={scrollRef}>
           {active.messages.length === 0 ? (
             <div className="assistant-empty">
@@ -239,6 +270,7 @@ export default function Assistant() {
             model={model}
             modelType={modelType}
             modelInfo={modelInfo}
+            showModel={false}
           />
         )}
         <p className="assistant-context-footnote">Live data from Open-Meteo</p>
@@ -277,6 +309,7 @@ export default function Assistant() {
                   model={model}
                   modelType={modelType}
                   modelInfo={modelInfo}
+                  showModel={false}
                 />
               )}
               <p className="assistant-context-footnote">Live data from Open-Meteo</p>
@@ -287,3 +320,4 @@ export default function Assistant() {
     </div>
   )
 }
+

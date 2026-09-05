@@ -30,6 +30,13 @@ import {
   getModelDescription,
   getNwpExplanation,
 } from '../services/weatherService.js'
+import {
+  generateGeneralAdvisory,
+  generateTravelAdvisory,
+  generateAgricultureAdvisory,
+  extractPeriodMetrics,
+} from './advisoryEngine.js'
+import { searchLocations } from '../services/locationService.js'
 
 
 
@@ -149,53 +156,139 @@ export function isModelInquiry(query) {
 /**
  * Detect specific weather variable intent (rain, temperature, etc.).
  */
-export function detectWeatherIntent(query) {
-  if (!query || typeof query !== 'string') return null
+/**
+ * Detect all weather intents present in the user question (for multi-intent handling).
+ */
+export function detectAllIntents(query) {
+  if (!query || typeof query !== 'string') return []
   const q = query.toLowerCase().trim()
+  const intents = []
+
+  if (isModelInquiry(q)) {
+    intents.push('nwp_model')
+  }
 
   // Rain / precipitation
   if (/rain|raining|precip|shower|drizzle|umbrella/.test(q)) {
-    return 'rain'
+    intents.push('rain')
   }
 
-  // Travel / outdoor advice
-  if (/travel|go out|step out|drive|commute|journey|trip|outdoor|outside|safe/.test(q)) {
-    return 'travel_safety'
+  // Agriculture / crops / irrigation
+  if (/irrigate|irrigation|crop|crops|farming|farm|plants|water.*plant|agriculture|fertiliz|spray|sow|harvest/.test(q)) {
+    intents.push('agriculture')
+  }
+
+  // Travel / transit / commute
+  if (/travel|trip|journey|drive|driving|commute|road|visit|going to|safe to travel/.test(q)) {
+    intents.push('travel_safety')
+  }
+
+  // General advice / advisory / outdoor
+  if (/advice|advise|recommend|recommendation|what should i do|need an umbrella|go out|step out|outdoor|outside/.test(q)) {
+    intents.push('advisory')
   }
 
   // Weekend
   if (/weekend|saturday|sunday/.test(q)) {
-    return 'weekend'
+    intents.push('weekend')
   }
 
   // Temperature
   if (/temperature|temp|hot|cold|heat|cool|degrees|°c|°f/.test(q)) {
-    return 'temperature'
+    intents.push('temperature')
   }
 
   // Wind
   if (/wind|windy|breeze|gust/.test(q)) {
-    return 'wind'
+    intents.push('wind')
   }
 
   // Humidity
   if (/humid|humidity|moisture/.test(q)) {
-    return 'humidity'
+    intents.push('humidity')
   }
 
   // Pressure
   if (/pressure|atmospheric pressure/.test(q)) {
-    return 'pressure'
+    intents.push('pressure')
   }
 
   // Risk / warning
   if (/risk|warning|alert|danger|hazard|severe|extreme/.test(q)) {
+    intents.push('risk')
+  }
+
+  // General summary
+  if (
+    /summary|overview|weather today|weather tomorrow|how.*weather|weather like|what.*weather/.test(q) &&
+    !isModelInquiry(q)
+  ) {
+    intents.push('summary')
+  }
+
+  return intents
+}
+
+/**
+ * Detect primary weather intent (rain, travel, agriculture, advisory, temperature, etc.).
+ */
+export function detectWeatherIntent(query) {
+  if (!query || typeof query !== 'string') return null
+  const q = query.toLowerCase().trim()
+
+  // 1. Agriculture / irrigation
+  if (/irrigate|irrigation|crop|crops|farming|farm|plants|water.*plant|agriculture|fertiliz|spray|sow|harvest/.test(q)) {
+    return 'agriculture'
+  }
+
+  // 2. Travel / commute advice
+  if (/travel|trip|journey|drive|commute|safe to travel|visit/.test(q)) {
+    return 'travel_safety'
+  }
+
+  // 3. General advice / outdoor guidance
+  if (/advice|advise|recommend|recommendation|what should i do|need an umbrella|go out|step out|outdoor|outside/.test(q)) {
+    return 'advisory'
+  }
+
+  // 4. Rain / precipitation
+  if (/rain|raining|precip|shower|drizzle|umbrella/.test(q)) {
+    return 'rain'
+  }
+
+  // 5. Weekend
+  if (/weekend|saturday|sunday/.test(q)) {
+    return 'weekend'
+  }
+
+  // 6. Temperature
+  if (/temperature|temp|hot|cold|heat|cool|degrees|°c|°f/.test(q)) {
+    return 'temperature'
+  }
+
+  // 7. Wind
+  if (/wind|windy|breeze|gust/.test(q)) {
+    return 'wind'
+  }
+
+  // 8. Humidity
+  if (/humid|humidity|moisture/.test(q)) {
+    return 'humidity'
+  }
+
+  // 9. Pressure
+  if (/pressure|atmospheric pressure/.test(q)) {
+    return 'pressure'
+  }
+
+  // 10. Risk / warning
+  if (/risk|warning|alert|danger|hazard|severe|extreme/.test(q)) {
     return 'risk'
   }
 
-  // General summary (only if explicitly asking about general conditions and not a pure model query)
+  // 11. General summary
   if (
-    /summary|overview|weather today|weather tomorrow|how.*weather|weather like/.test(q) &&
+    /summary|overview|weather today|weather tomorrow|how.*weather|weather like|what.*weather/.test(q) &&
     !isModelInquiry(q)
   ) {
     return 'summary'
@@ -280,6 +373,11 @@ export function detectLocation(query, selectedLocation, locations = LOCATIONS) {
 
   const q = query.toLowerCase()
 
+  // References to user's current / active location
+  if (/\b(here|current location|my location|around here|this place|local)\b/i.test(q)) {
+    return selectedLocation
+  }
+
   // 1. Check exact location names with word boundaries to avoid false substring matches
   for (const location of locations) {
     if (!location?.name) continue
@@ -321,6 +419,37 @@ export function detectLocation(query, selectedLocation, locations = LOCATIONS) {
   return selectedLocation
 }
 
+/**
+ * Dynamically resolves any location mentioned in a query (including cities worldwide).
+ */
+export async function resolveTargetLocation(query, selectedLocation, locations = LOCATIONS) {
+  const syncMatch = detectLocation(query, selectedLocation, locations)
+  if (syncMatch && syncMatch.name !== selectedLocation?.name) {
+    return syncMatch
+  }
+
+  // If query specifically specifies "in <City>" or "to <City>" or "for <City>"
+  const match = query.match(/\b(?:in|to|for|at)\s+([A-Za-z\s]+?)(?:\s+(?:today|tomorrow|tonight|this|and|should|what|is|how|next|\?|$))/i)
+  if (match && match[1]) {
+    const candidate = match[1].trim()
+    if (candidate && candidate.length > 2 && !/^(the|a|my|our|current|this|here)$/i.test(candidate)) {
+      const foundKnown = locations.find(l => l.name.toLowerCase() === candidate.toLowerCase())
+      if (foundKnown) return foundKnown
+
+      try {
+        const searchResults = await searchLocations(candidate, 1)
+        if (searchResults && searchResults.length > 0) {
+          return searchResults[0]
+        }
+      } catch (err) {
+        console.warn('Dynamic location search failed:', err)
+      }
+    }
+  }
+
+  return syncMatch || selectedLocation
+}
+
 
 /**
  * Convert the natural-language question into structured data.
@@ -330,15 +459,25 @@ export function parseWeatherQuery(
   selectedLocation,
   locations = LOCATIONS
 ) {
+  const allIntents = detectAllIntents(query)
   const weatherIntent = detectWeatherIntent(query)
   const hasModel = isModelInquiry(query)
   const isCompound = Boolean(weatherIntent && hasModel)
 
+  const hasForecastIntent = allIntents.includes('rain') || allIntents.includes('temperature')
+  const hasAdvisoryIntent =
+    allIntents.includes('travel_safety') ||
+    allIntents.includes('agriculture') ||
+    allIntents.includes('advisory')
+  const isMultiIntent = hasForecastIntent && hasAdvisoryIntent
+
   return {
     intent: weatherIntent || (hasModel ? 'nwp_model' : 'weather'),
     weatherIntent,
+    allIntents,
     hasModelQuery: hasModel,
     isCompoundQuery: isCompound,
+    isMultiIntent,
     time: detectTime(query),
     location: detectLocation(
       query,
@@ -866,40 +1005,54 @@ function generateWeatherResponse(
 
 function generateTravelSafetyResponse(
   locationName,
-  snapshot
+  weatherData,
+  snapshot,
+  time = 'today'
 ) {
-  if (!snapshot) {
+  if (!snapshot && !weatherData) {
     return `I couldn't evaluate travel conditions for ${locationName} right now.`
   }
 
-  const risk =
-    evaluateRisk(snapshot)
+  const metrics = extractPeriodMetrics(weatherData, snapshot, time)
+  const risk = evaluateRisk(snapshot)
+  const travel = generateTravelAdvisory(metrics, locationName, risk)
+  const dayLabel = time === 'tomorrow' ? 'tomorrow' : (time === 'evening' ? 'this evening' : 'today')
 
-  if (risk.level === 'LOW') {
-    return (
-      `Travel conditions in ${locationName} look generally favorable right now. ` +
-      `${risk.description} ${risk.recommendation}`
-    )
+  return `Travel conditions in ${locationName} ${dayLabel} ${travel.summary.toLowerCase().startsWith('travel') ? travel.summary : 'look like this: ' + travel.summary} ${travel.recommendation}`
+}
+
+function generateAgricultureResponse(
+  locationName,
+  weatherData,
+  snapshot,
+  time = 'tomorrow'
+) {
+  if (!snapshot && !weatherData) {
+    return `I couldn't evaluate agricultural conditions for ${locationName} right now.`
   }
 
-  if (risk.level === 'MODERATE') {
-    return (
-      `Travel is possible in ${locationName}, but some caution is advisable. ` +
-      `${risk.description} ${risk.recommendation}`
-    )
+  const metrics = extractPeriodMetrics(weatherData, snapshot, time)
+  const risk = evaluateRisk(snapshot)
+  const agri = generateAgricultureAdvisory(metrics, locationName, risk)
+
+  return `${agri.summary} ${agri.recommendation}`
+}
+
+function generateAdvisoryResponse(
+  locationName,
+  weatherData,
+  snapshot,
+  time = 'tomorrow'
+) {
+  if (!snapshot && !weatherData) {
+    return `I couldn't generate a weather advisory for ${locationName} right now.`
   }
 
-  if (risk.level === 'HIGH') {
-    return (
-      `I'd recommend extra caution when travelling in ${locationName}. ` +
-      `${risk.description} ${risk.recommendation}`
-    )
-  }
+  const metrics = extractPeriodMetrics(weatherData, snapshot, time)
+  const risk = evaluateRisk(snapshot)
+  const general = generateGeneralAdvisory(metrics, locationName, risk)
 
-  return (
-    `Weather conditions in ${locationName} may be hazardous right now. ` +
-    `${risk.description} ${risk.recommendation}`
-  )
+  return `${general.headline}. ${general.summary} ${general.recommendation}`
 }
 
 
@@ -1079,7 +1232,6 @@ function generateModelResponse(query, weatherData, locationName) {
  * @param {object} snapshot
  * @param {object[]} locations
  */
-
 export async function generateResponse(
   query,
   weatherData,
@@ -1092,10 +1244,11 @@ export async function generateResponse(
       (loc) => loc.name.toLowerCase() === (locationName || '').toLowerCase()
     ) || { name: locationName }
 
-  const parsed = parseWeatherQuery(query, currentLocation, locations)
+  // Resolve target location (supporting dynamic worldwide search as well)
+  let detectedLocation = await resolveTargetLocation(query, currentLocation, locations)
+  const parsed = parseWeatherQuery(query, detectedLocation, locations)
 
   const intent = parsed.intent
-  const detectedLocation = parsed.location
   const resolvedLocationName = detectedLocation?.name || locationName
 
   let activeWeatherData = weatherData
@@ -1139,12 +1292,63 @@ export async function generateResponse(
 
   let reply = ''
 
-  switch (intent) {
+  // ----------------------------------------------------
+  // Multi-Intent Question Handling
+  // e.g. "Will it rain tomorrow in Ooty and should I travel?"
+  // ----------------------------------------------------
+  if (parsed.isMultiIntent) {
+    let forecastSection = ''
+    let advisorySection = ''
 
+    if (parsed.allIntents.includes('rain')) {
+      forecastSection = generateRainResponse(
+        query,
+        activeWeatherData,
+        resolvedLocationName,
+        false
+      )
+    } else if (parsed.allIntents.includes('temperature')) {
+      forecastSection = generateTemperatureResponse(
+        query,
+        activeWeatherData,
+        resolvedLocationName,
+        activeSnapshot
+      )
+    }
+
+    if (parsed.allIntents.includes('travel_safety')) {
+      advisorySection = generateTravelSafetyResponse(
+        resolvedLocationName,
+        activeWeatherData,
+        activeSnapshot,
+        parsed.time
+      )
+    } else if (parsed.allIntents.includes('agriculture')) {
+      advisorySection = generateAgricultureResponse(
+        resolvedLocationName,
+        activeWeatherData,
+        activeSnapshot,
+        parsed.time
+      )
+    } else if (parsed.allIntents.includes('advisory')) {
+      advisorySection = generateAdvisoryResponse(
+        resolvedLocationName,
+        activeWeatherData,
+        activeSnapshot,
+        parsed.time
+      )
+    }
+
+    if (forecastSection && advisorySection) {
+      reply = `${forecastSection} ${advisorySection}`
+      return reply
+    }
+  }
+
+  switch (intent) {
     // -------------------------------
     // NWP Model
     // -------------------------------
-
     case 'nwp_model':
       return generateModelResponse(
         query,
@@ -1155,7 +1359,6 @@ export async function generateResponse(
     // -------------------------------
     // Rain
     // -------------------------------
-
     case 'rain':
       reply = generateRainResponse(
         query,
@@ -1165,11 +1368,9 @@ export async function generateResponse(
       )
       break
 
-
     // -------------------------------
     // Temperature
     // -------------------------------
-
     case 'temperature':
       reply = generateTemperatureResponse(
         query,
@@ -1179,11 +1380,9 @@ export async function generateResponse(
       )
       break
 
-
     // -------------------------------
     // Humidity
     // -------------------------------
-
     case 'humidity':
       reply = generateHumidityResponse(
         resolvedLocationName,
@@ -1191,11 +1390,9 @@ export async function generateResponse(
       )
       break
 
-
     // -------------------------------
     // Wind
     // -------------------------------
-
     case 'wind':
       reply = generateWindResponse(
         resolvedLocationName,
@@ -1203,11 +1400,9 @@ export async function generateResponse(
       )
       break
 
-
     // -------------------------------
     // Pressure
     // -------------------------------
-
     case 'pressure':
       reply = generatePressureResponse(
         resolvedLocationName,
@@ -1215,23 +1410,45 @@ export async function generateResponse(
       )
       break
 
-
     // -------------------------------
     // Travel / outdoor
     // -------------------------------
-
     case 'travel_safety':
       reply = generateTravelSafetyResponse(
         resolvedLocationName,
-        activeSnapshot
+        activeWeatherData,
+        activeSnapshot,
+        parsed.time
       )
       break
 
+    // -------------------------------
+    // Agriculture
+    // -------------------------------
+    case 'agriculture':
+      reply = generateAgricultureResponse(
+        resolvedLocationName,
+        activeWeatherData,
+        activeSnapshot,
+        parsed.time
+      )
+      break
+
+    // -------------------------------
+    // General Advisory
+    // -------------------------------
+    case 'advisory':
+      reply = generateAdvisoryResponse(
+        resolvedLocationName,
+        activeWeatherData,
+        activeSnapshot,
+        parsed.time
+      )
+      break
 
     // -------------------------------
     // Risk
     // -------------------------------
-
     case 'risk':
       reply = generateRiskResponse(
         resolvedLocationName,
@@ -1239,11 +1456,9 @@ export async function generateResponse(
       )
       break
 
-
     // -------------------------------
     // Weekend
     // -------------------------------
-
     case 'weekend':
       reply = generateWeekendResponse(
         activeWeatherData,
@@ -1254,7 +1469,6 @@ export async function generateResponse(
     // -------------------------------
     // General summary
     // -------------------------------
-
     case 'summary':
       reply = generateWeatherResponse(
         resolvedLocationName,
@@ -1263,11 +1477,9 @@ export async function generateResponse(
       )
       break
 
-
     // -------------------------------
     // General weather
     // -------------------------------
-
     default:
       reply = generateWeatherResponse(
         resolvedLocationName,

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { Navigation, AlertCircle } from 'lucide-react'
 import { useLocationWeather } from '../context/LocationContext.jsx'
 import ForecastCard from '../components/ForecastCard.jsx'
 import LocationPicker from '../components/LocationPicker.jsx'
@@ -16,8 +17,21 @@ function formatDayShort(dateStr, index) {
 }
 
 export default function Forecast() {
-  const { location, setLocation, snapshot, daily, model, modelType, modelInfo, status, retry } =
-    useLocationWeather()
+  const {
+    location,
+    setLocation,
+    weatherData,
+    snapshot,
+    daily,
+    model,
+    modelType,
+    modelInfo,
+    status,
+    retry,
+    isDetectingLocation,
+    locationNotice,
+    clearLocationNotice,
+  } = useLocationWeather()
   const [activeDay, setActiveDay] = useState(0)
   const risk = snapshot ? evaluateRisk(snapshot) : null
 
@@ -33,6 +47,23 @@ export default function Forecast() {
   return (
     <main className="forecast-page">
       <div className="wg-container">
+        {/* Geolocation status banners */}
+        {isDetectingLocation && (
+          <div className="forecast-banner info">
+            <Navigation size={15} className="banner-spinner" />
+            <span>Detecting your location...</span>
+          </div>
+        )}
+        {locationNotice && (
+          <div className="forecast-banner warning">
+            <AlertCircle size={15} />
+            <span>{locationNotice}</span>
+            <button onClick={clearLocationNotice} className="forecast-banner-close">
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="forecast-head">
           <div>
             <h1>Forecast</h1>
@@ -41,7 +72,7 @@ export default function Forecast() {
           <LocationPicker location={location} onChange={setLocation} />
         </div>
 
-        {status === 'loading' && <LoadingState />}
+        {status === 'loading' && <LoadingState message="Updating forecast..." />}
         {status === 'error' && <ErrorState onRetry={retry} />}
 
         {status === 'success' && (
@@ -54,6 +85,7 @@ export default function Forecast() {
                 model={model}
                 modelType={modelType}
                 modelInfo={modelInfo}
+                showModel={false}
               />
 
               {selected && (

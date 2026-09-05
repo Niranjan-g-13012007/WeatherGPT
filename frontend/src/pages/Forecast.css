@@ -91,8 +91,76 @@
   margin-bottom: 8px;
 }
 
+.forecast-advisory-section {
+  margin-bottom: 28px;
+}
+
+.forecast-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.84rem;
+  margin-bottom: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+.forecast-banner.info {
+  background: var(--color-sky-50);
+  border: 1px solid var(--color-sky-100);
+  color: var(--color-cyan-dark);
+}
+
+.forecast-banner.warning {
+  background: var(--color-amber-bg);
+  border: 1px solid rgba(230, 163, 23, 0.25);
+  color: #8C5E03;
+}
+
+.forecast-banner-close {
+  background: transparent;
+  border: none;
+  font-size: 0.8rem;
+  color: inherit;
+  opacity: 0.7;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.forecast-banner-close:hover {
+  opacity: 1;
+}
+
+.banner-spinner {
+  animation: bannerSpin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes bannerSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 860px) {
   .forecast-top {
     grid-template-columns: 1fr;
   }
 }
+
