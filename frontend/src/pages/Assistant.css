@@ -1,5 +1,9 @@
 .assistant {
   height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow: hidden;
   display: grid;
   grid-template-columns: 240px 1fr 300px;
   background: var(--color-offwhite);
@@ -7,6 +11,10 @@
 
 /* Sidebar */
 .assistant-sidebar {
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  flex-shrink: 0;
   border-right: 1px solid var(--color-line);
   background: var(--color-white);
   padding: 20px 16px;
@@ -93,7 +101,11 @@
 .assistant-main {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
   min-width: 0;
+  overflow: hidden;
   border-right: 1px solid var(--color-line);
 }
 
@@ -104,6 +116,7 @@
   padding: 16px 28px;
   border-bottom: 1px solid var(--color-line);
   background: var(--color-white);
+  flex-shrink: 0;
 }
 
 .assistant-header-title {
@@ -153,8 +166,10 @@
 }
 
 .assistant-chat {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 28px;
 }
 
@@ -230,6 +245,7 @@
   border-top: 1px solid var(--color-line);
   background: var(--color-white);
   width: 100%;
+  flex-shrink: 0;
 }
 
 .assistant-input-area .chat-input-wrap,
@@ -260,6 +276,10 @@
 
 /* Right context panel (desktop) */
 .assistant-context {
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  flex-shrink: 0;
   padding: 20px 20px;
   background: var(--color-white);
   display: flex;

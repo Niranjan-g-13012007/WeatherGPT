@@ -34,6 +34,7 @@ import {
   generateGeneralAdvisory,
   generateTravelAdvisory,
   generateAgricultureAdvisory,
+  generateOutdoorAdvisory,
   extractPeriodMetrics,
 } from './advisoryEngine.js'
 import { searchLocations } from '../services/locationService.js'
@@ -183,8 +184,13 @@ export function detectAllIntents(query) {
     intents.push('travel_safety')
   }
 
-  // General advice / advisory / outdoor
-  if (/advice|advise|recommend|recommendation|what should i do|need an umbrella|go out|step out|outdoor|outside/.test(q)) {
+  // Outdoor activity / heat outdoors / going outside
+  if (/(?:too\s+)?hot.*(?:outside|outdoors?|go out|step out)|(?:outside|outdoors?|go out|step out).*(?:hot|warm|heat)|go out|step out|outdoor|outside/.test(q)) {
+    intents.push('outdoor')
+  }
+
+  // General advice / advisory (only when general advisory is requested, not merely umbrella)
+  if (/\b(?:advis(?:e|ory|ories|ing)?|advice|recommend|recommendation|what should i do|precaution|guidance)\b/i.test(q)) {
     intents.push('advisory')
   }
 
@@ -193,7 +199,7 @@ export function detectAllIntents(query) {
     intents.push('weekend')
   }
 
-  // Temperature
+  // Temperature (only if not an outdoor query)
   if (/temperature|temp|hot|cold|heat|cool|degrees|°c|°f/.test(q)) {
     intents.push('temperature')
   }
@@ -221,7 +227,8 @@ export function detectAllIntents(query) {
   // General summary
   if (
     /summary|overview|weather today|weather tomorrow|how.*weather|weather like|what.*weather/.test(q) &&
-    !isModelInquiry(q)
+    !isModelInquiry(q) &&
+    intents.length === 0
   ) {
     intents.push('summary')
   }
@@ -246,47 +253,52 @@ export function detectWeatherIntent(query) {
     return 'travel_safety'
   }
 
-  // 3. General advice / outdoor guidance
-  if (/advice|advise|recommend|recommendation|what should i do|need an umbrella|go out|step out|outdoor|outside/.test(q)) {
+  // 3. Outdoor activity / heat outdoors
+  if (/(?:too\s+)?hot.*(?:outside|outdoors?|go out|step out)|(?:outside|outdoors?|go out|step out).*(?:hot|warm|heat)|go out|step out|outdoor|outside/.test(q)) {
+    return 'outdoor'
+  }
+
+  // 4. General advice / advisory
+  if (/\b(?:advis(?:e|ory|ories|ing)?|advice|recommend|recommendation|what should i do|precaution|guidance)\b/i.test(q)) {
     return 'advisory'
   }
 
-  // 4. Rain / precipitation
+  // 5. Rain / precipitation
   if (/rain|raining|precip|shower|drizzle|umbrella/.test(q)) {
     return 'rain'
   }
 
-  // 5. Weekend
+  // 6. Weekend
   if (/weekend|saturday|sunday/.test(q)) {
     return 'weekend'
   }
 
-  // 6. Temperature
+  // 7. Temperature
   if (/temperature|temp|hot|cold|heat|cool|degrees|°c|°f/.test(q)) {
     return 'temperature'
   }
 
-  // 7. Wind
+  // 8. Wind
   if (/wind|windy|breeze|gust/.test(q)) {
     return 'wind'
   }
 
-  // 8. Humidity
+  // 9. Humidity
   if (/humid|humidity|moisture/.test(q)) {
     return 'humidity'
   }
 
-  // 9. Pressure
+  // 10. Pressure
   if (/pressure|atmospheric pressure/.test(q)) {
     return 'pressure'
   }
 
-  // 10. Risk / warning
+  // 11. Risk / warning
   if (/risk|warning|alert|danger|hazard|severe|extreme/.test(q)) {
     return 'risk'
   }
 
-  // 11. General summary
+  // 12. General summary
   if (
     /summary|overview|weather today|weather tomorrow|how.*weather|weather like|what.*weather/.test(q) &&
     !isModelInquiry(q)
@@ -464,17 +476,29 @@ export function parseWeatherQuery(
   const hasModel = isModelInquiry(query)
   const isCompound = Boolean(weatherIntent && hasModel)
 
-  const hasForecastIntent = allIntents.includes('rain') || allIntents.includes('temperature')
-  const hasAdvisoryIntent =
-    allIntents.includes('travel_safety') ||
-    allIntents.includes('agriculture') ||
-    allIntents.includes('advisory')
-  const isMultiIntent = hasForecastIntent && hasAdvisoryIntent
+  // Filter out redundant overlaps:
+  // - If asking "will it be too hot to go outside", outdoor handles temperature already
+  // - If asking travel/agri/outdoor, don't trigger generic advisory
+  const distinctIntents = allIntents.filter((intent) => {
+    if (intent === 'temperature' && allIntents.includes('outdoor')) return false
+    if (
+      intent === 'advisory' &&
+      (allIntents.includes('travel_safety') ||
+        allIntents.includes('agriculture') ||
+        allIntents.includes('outdoor'))
+    ) {
+      return false
+    }
+    return true
+  })
+
+  // Multi-intent triggers when 2 or more distinct actionable intents are present
+  const isMultiIntent = distinctIntents.length >= 2
 
   return {
     intent: weatherIntent || (hasModel ? 'nwp_model' : 'weather'),
     weatherIntent,
-    allIntents,
+    allIntents: distinctIntents,
     hasModelQuery: hasModel,
     isCompoundQuery: isCompound,
     isMultiIntent,
@@ -587,6 +611,7 @@ function generateRainResponse(
   const { daily, hourly } = weatherData
 
   const time = detectTime(query)
+  const isUmbrella = /umbrella/i.test(query)
 
   // -----------------------------------------
   // Tomorrow
@@ -615,9 +640,10 @@ function generateRainResponse(
       return `I couldn't determine tomorrow's rain probability for ${locationName}.`
     }
 
+    const roundedProb = Math.round(probability)
+    const precipVal = precipitation != null ? Number(precipitation.toFixed(1)) : 0
+
     if (isCompound) {
-      const roundedProb = Math.round(probability)
-      const precipVal = precipitation != null ? precipitation : 0
       const modelInfo = getForecastModel(weatherData)
       const modelSuffix = modelInfo?.isAvailable && modelInfo?.model
         ? ` The forecast is based on the ${modelInfo.model} numerical weather prediction model via ${modelInfo.provider}.`
@@ -625,7 +651,7 @@ function generateRainResponse(
 
       if (probability >= 70) {
         return (
-          `Rain is quite likely in ${locationName} tomorrow, with an ${roundedProb}% precipitation probability and approximately ${precipVal} mm of expected precipitation.${modelSuffix}`
+          `Rain is quite likely in ${locationName} tomorrow, with a ${roundedProb}% precipitation probability and approximately ${precipVal} mm of expected precipitation.${modelSuffix}`
         )
       }
 
@@ -640,15 +666,30 @@ function generateRainResponse(
       )
     }
 
+    if (isUmbrella) {
+      if (probability >= 60) {
+        return (
+          `Yes, carrying an umbrella is recommended for ${locationName} tomorrow. ` +
+          `Precipitation probability is around ${roundedProb}% with approximately ${precipVal} mm of rain expected.`
+        )
+      }
+      if (probability >= 30) {
+        return (
+          `It is advisable to keep an umbrella handy in ${locationName} tomorrow. ` +
+          `There is a moderate chance of rain (${roundedProb}% probability, ~${precipVal} mm expected).`
+        )
+      }
+      return (
+        `You likely will not need an umbrella in ${locationName} tomorrow. ` +
+        `Rain is unlikely, with a precipitation probability of around ${roundedProb}% and approximately ${precipVal} mm of expected precipitation.`
+      )
+    }
+
     if (probability >= 70) {
       return (
         `Yes, rain is quite likely in ${locationName} tomorrow. ` +
-        `The maximum precipitation probability is around ${Math.round(
-          probability
-        )}%. ` +
-        `Expected precipitation is approximately ${
-          precipitation ?? 0
-        } mm. ` +
+        `The maximum precipitation probability is around ${roundedProb}%. ` +
+        `Expected precipitation is approximately ${precipVal} mm. ` +
         `If you're heading outside, carrying an umbrella would be advisable.`
       )
     }
@@ -656,24 +697,16 @@ function generateRainResponse(
     if (probability >= 40) {
       return (
         `There is a moderate chance of rain in ${locationName} tomorrow, ` +
-        `with a precipitation probability of around ${Math.round(
-          probability
-        )}%. ` +
-        `Expected precipitation is approximately ${
-          precipitation ?? 0
-        } mm. ` +
+        `with a precipitation probability of around ${roundedProb}%. ` +
+        `Expected precipitation is approximately ${precipVal} mm. ` +
         `I'd recommend keeping an umbrella with you.`
       )
     }
 
     return (
       `Rain is less likely in ${locationName} tomorrow, ` +
-      `with a precipitation probability of around ${Math.round(
-        probability
-      )}%. ` +
-      `Expected precipitation is approximately ${
-        precipitation ?? 0
-      } mm.`
+      `with a precipitation probability of around ${roundedProb}%. ` +
+      `Expected precipitation is approximately ${precipVal} mm.`
     )
   }
 
@@ -1018,14 +1051,15 @@ function generateTravelSafetyResponse(
   const travel = generateTravelAdvisory(metrics, locationName, risk)
   const dayLabel = time === 'tomorrow' ? 'tomorrow' : (time === 'evening' ? 'this evening' : 'today')
 
-  return `Travel conditions in ${locationName} ${dayLabel} ${travel.summary.toLowerCase().startsWith('travel') ? travel.summary : 'look like this: ' + travel.summary} ${travel.recommendation}`
+  return `Travel advisory for ${locationName} (${dayLabel}): ${travel.headline}. ${travel.summary} ${travel.recommendation}`
 }
 
 function generateAgricultureResponse(
   locationName,
   weatherData,
   snapshot,
-  time = 'tomorrow'
+  time = 'tomorrow',
+  query = ''
 ) {
   if (!snapshot && !weatherData) {
     return `I couldn't evaluate agricultural conditions for ${locationName} right now.`
@@ -1034,8 +1068,37 @@ function generateAgricultureResponse(
   const metrics = extractPeriodMetrics(weatherData, snapshot, time)
   const risk = evaluateRisk(snapshot)
   const agri = generateAgricultureAdvisory(metrics, locationName, risk)
+  const isPostponeQuestion = /postpone|delay|cancel|hold off/i.test(query) && /irrigate|irrigation|watering/i.test(query)
 
-  return `${agri.summary} ${agri.recommendation}`
+  if (isPostponeQuestion) {
+    const { precipProb, precipSum } = metrics
+    const dayLabel = time === 'tomorrow' ? 'tomorrow' : 'today'
+    if (precipProb >= 50 || precipSum >= 4) {
+      return `For ${locationName}, rain is expected ${dayLabel} with a ${precipProb}% probability and approximately ${precipSum} mm of precipitation. It is advisable to postpone scheduled irrigation and fertilizer application to prevent waterlogging and chemical runoff. Monitor local soil moisture conditions.`
+    } else {
+      return `For ${locationName}, rain is unlikely ${dayLabel} (precipitation probability is around ${precipProb}% with approximately ${precipSum} mm expected). Postponing irrigation may not be necessary; you can proceed with scheduled watering while monitoring soil moisture levels.`
+    }
+  }
+
+  const dayLabel = time === 'tomorrow' ? "Tomorrow's" : "Today's"
+  return `${dayLabel} agricultural advisory for ${locationName}: ${agri.summary} ${agri.recommendation}`
+}
+
+function generateOutdoorResponse(
+  locationName,
+  weatherData,
+  snapshot,
+  time = 'tomorrow'
+) {
+  if (!snapshot && !weatherData) {
+    return `I couldn't evaluate outdoor conditions for ${locationName} right now.`
+  }
+
+  const metrics = extractPeriodMetrics(weatherData, snapshot, time)
+  const risk = evaluateRisk(snapshot)
+  const outdoor = generateOutdoorAdvisory(metrics, locationName, risk)
+
+  return `Outdoor advisory for ${locationName}: ${outdoor.headline}. ${outdoor.summary} ${outdoor.recommendation}`
 }
 
 function generateAdvisoryResponse(
@@ -1052,7 +1115,8 @@ function generateAdvisoryResponse(
   const risk = evaluateRisk(snapshot)
   const general = generateGeneralAdvisory(metrics, locationName, risk)
 
-  return `${general.headline}. ${general.summary} ${general.recommendation}`
+  const dayLabel = time === 'tomorrow' ? "Tomorrow's" : "Today's"
+  return `${dayLabel} weather advisory for ${locationName}: ${general.headline}. ${general.summary} ${general.recommendation}`
 }
 
 
@@ -1296,52 +1360,107 @@ export async function generateResponse(
   // Multi-Intent Question Handling
   // e.g. "Will it rain tomorrow in Ooty and should I travel?"
   // ----------------------------------------------------
-  if (parsed.isMultiIntent) {
-    let forecastSection = ''
-    let advisorySection = ''
+  if (parsed.isMultiIntent && parsed.allIntents.length >= 2) {
+    const sections = []
 
+    // 1. Rain
     if (parsed.allIntents.includes('rain')) {
-      forecastSection = generateRainResponse(
-        query,
-        activeWeatherData,
-        resolvedLocationName,
-        false
-      )
-    } else if (parsed.allIntents.includes('temperature')) {
-      forecastSection = generateTemperatureResponse(
-        query,
-        activeWeatherData,
-        resolvedLocationName,
-        activeSnapshot
+      sections.push(
+        generateRainResponse(
+          query,
+          activeWeatherData,
+          resolvedLocationName,
+          false
+        )
       )
     }
 
+    // 2. Temperature (if not already handled by outdoor)
+    if (
+      parsed.allIntents.includes('temperature') &&
+      !parsed.allIntents.includes('outdoor')
+    ) {
+      sections.push(
+        generateTemperatureResponse(
+          query,
+          activeWeatherData,
+          resolvedLocationName,
+          activeSnapshot
+        )
+      )
+    }
+
+    // 3. Outdoor
+    if (parsed.allIntents.includes('outdoor')) {
+      sections.push(
+        generateOutdoorResponse(
+          resolvedLocationName,
+          activeWeatherData,
+          activeSnapshot,
+          parsed.time
+        )
+      )
+    }
+
+    // 4. Travel safety
     if (parsed.allIntents.includes('travel_safety')) {
-      advisorySection = generateTravelSafetyResponse(
-        resolvedLocationName,
-        activeWeatherData,
-        activeSnapshot,
-        parsed.time
-      )
-    } else if (parsed.allIntents.includes('agriculture')) {
-      advisorySection = generateAgricultureResponse(
-        resolvedLocationName,
-        activeWeatherData,
-        activeSnapshot,
-        parsed.time
-      )
-    } else if (parsed.allIntents.includes('advisory')) {
-      advisorySection = generateAdvisoryResponse(
-        resolvedLocationName,
-        activeWeatherData,
-        activeSnapshot,
-        parsed.time
+      sections.push(
+        generateTravelSafetyResponse(
+          resolvedLocationName,
+          activeWeatherData,
+          activeSnapshot,
+          parsed.time
+        )
       )
     }
 
-    if (forecastSection && advisorySection) {
-      reply = `${forecastSection} ${advisorySection}`
-      return reply
+    // 5. Agriculture
+    if (parsed.allIntents.includes('agriculture')) {
+      sections.push(
+        generateAgricultureResponse(
+          resolvedLocationName,
+          activeWeatherData,
+          activeSnapshot,
+          parsed.time,
+          query
+        )
+      )
+    }
+
+    // 6. General Advisory (if not already covered by specific travel/agriculture/outdoor)
+    if (
+      parsed.allIntents.includes('advisory') &&
+      !parsed.allIntents.includes('travel_safety') &&
+      !parsed.allIntents.includes('agriculture') &&
+      !parsed.allIntents.includes('outdoor')
+    ) {
+      sections.push(
+        generateAdvisoryResponse(
+          resolvedLocationName,
+          activeWeatherData,
+          activeSnapshot,
+          parsed.time
+        )
+      )
+    }
+
+    // 7. NWP model
+    if (
+      parsed.allIntents.includes('nwp_model') ||
+      parsed.hasModelQuery ||
+      isModelInquiry(query)
+    ) {
+      sections.push(
+        generateModelResponse(
+          query,
+          activeWeatherData,
+          resolvedLocationName
+        )
+      )
+    }
+
+    if (sections.length > 0) {
+      return sections.join('\n\n')
     }
   }
 
@@ -1377,6 +1496,18 @@ export async function generateResponse(
         activeWeatherData,
         resolvedLocationName,
         activeSnapshot
+      )
+      break
+
+    // -------------------------------
+    // Outdoor
+    // -------------------------------
+    case 'outdoor':
+      reply = generateOutdoorResponse(
+        resolvedLocationName,
+        activeWeatherData,
+        activeSnapshot,
+        parsed.time
       )
       break
 
@@ -1430,7 +1561,8 @@ export async function generateResponse(
         resolvedLocationName,
         activeWeatherData,
         activeSnapshot,
-        parsed.time
+        parsed.time,
+        query
       )
       break
 
@@ -1489,12 +1621,18 @@ export async function generateResponse(
       break
   }
 
-  // If this was a compound query (weather question + model inquiry) and not already handled by rain tomorrow:
-  if (parsed.isCompoundQuery && !(intent === 'rain' && parsed.time === 'tomorrow')) {
+  // If this was a compound query (weather question + model inquiry) and model was not already included in reply:
+  if (
+    (parsed.isCompoundQuery || isModelInquiry(query)) &&
+    !reply.includes('ECMWF')
+  ) {
     const modelInfo = getForecastModel(activeWeatherData)
-    const modelSentence = modelInfo?.isAvailable && modelInfo?.model
-      ? ` The forecast is based on the ${modelInfo.model} numerical weather prediction model via ${modelInfo.provider}.`
-      : (modelInfo?.message ? ` ${modelInfo.message}` : '')
+    const modelSentence =
+      modelInfo?.isAvailable && modelInfo?.model
+        ? `\n\nForecast model: This forecast is based on the ${modelInfo.model} numerical weather prediction model via ${modelInfo.provider}.`
+        : modelInfo?.message
+        ? `\n\n${modelInfo.message}`
+        : ''
     reply += modelSentence
   }
 

@@ -63,12 +63,26 @@ export default function Assistant() {
   const [isTyping, setIsTyping] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
   const scrollRef = useRef(null)
+  const userScrolledUpRef = useRef(false)
+  const isUserSendingRef = useRef(false)
 
   const active = conversations.find((c) => c.id === activeId) ?? conversations[0]
   const risk = snapshot ? evaluateRisk(snapshot) : null
 
+  function handleChatScroll() {
+    const el = scrollRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    userScrolledUpRef.current = distanceFromBottom > 80
+  }
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+    const el = scrollRef.current
+    if (!el) return
+    if (!userScrolledUpRef.current || isUserSendingRef.current) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+      isUserSendingRef.current = false
+    }
   }, [active?.messages, isTyping])
 
   function updateActive(updater) {
@@ -76,6 +90,8 @@ export default function Assistant() {
   }
 
   async function handleSend(text) {
+    isUserSendingRef.current = true
+    userScrolledUpRef.current = false
     updateActive((c) => ({
       ...c,
       title: c.messages.length === 0 ? text.slice(0, 40) : c.title,
@@ -218,7 +234,7 @@ export default function Assistant() {
           </div>
         )}
 
-        <div className="assistant-chat" ref={scrollRef}>
+        <div className="assistant-chat" ref={scrollRef} onScroll={handleChatScroll}>
           {active.messages.length === 0 ? (
             <div className="assistant-empty">
               <div className="assistant-empty-icon">

@@ -267,6 +267,60 @@ export function generateAgricultureAdvisory(metrics, locationName, risk) {
 }
 
 /**
+ * Generates an outdoor activity / temperature advisory evaluating sensible temperature categories:
+ * - Very Hot (>= 38°C)
+ * - Hot (32°C - 37°C)
+ * - Warm (25°C - 31°C)
+ * - Comfortable / Mild (< 25°C)
+ * Uses cautious advisory phrasing.
+ */
+export function generateOutdoorAdvisory(metrics, locationName, risk) {
+  const { period, tempMax, tempMin, precipProb } = metrics
+  const dayLabel = period === 'tomorrow' ? 'tomorrow' : 'today'
+  const temp = tempMax ?? metrics.currentTemp ?? 25
+
+  let category = 'Comfortable'
+  let summary = ''
+  let recommendation = ''
+  let riskLevel = RISK_LEVELS.LOW
+
+  if (temp >= 38) {
+    category = 'Very Hot'
+    summary = `Highs are forecast to reach around ${temp}°C ${dayLabel} in ${locationName}. Outdoor conditions may feel intense during peak sun hours.`
+    recommendation = `It may be uncomfortably hot to stay outside for extended periods. Consider limiting strenuous outdoor exertion between 11 AM and 4 PM, seeking shaded or air-conditioned environments, and keeping well-hydrated.`
+    riskLevel = RISK_LEVELS.HIGH
+  } else if (temp >= 32) {
+    category = 'Hot'
+    summary = `Temperatures are expected to reach around ${temp}°C ${dayLabel} in ${locationName}, making it warm to hot outdoors.`
+    recommendation = `It may feel hot during midday. If you plan to be outside, consider taking regular breaks in the shade, staying hydrated, and scheduling heavy workouts for the cooler morning or late evening.`
+    riskLevel = RISK_LEVELS.MODERATE
+  } else if (temp >= 25) {
+    category = 'Warm'
+    summary = `Highs of approximately ${temp}°C are forecast ${dayLabel} in ${locationName}, offering comfortably warm conditions.`
+    recommendation = `Outdoor conditions should be quite pleasant for most activities. Consider wearing light clothing, carrying water, and wearing sun protection if spending long periods outside.`
+    riskLevel = RISK_LEVELS.LOW
+  } else {
+    category = 'Comfortable'
+    const minNote = tempMin != null ? ` with lows near ${tempMin}°C` : ''
+    summary = `Expected highs are around ${temp}°C${minNote} ${dayLabel} in ${locationName}.`
+    recommendation = `Temperatures look comfortable and mild for outdoor outings and daily routines. No heat-related concerns are expected.`
+    riskLevel = RISK_LEVELS.LOW
+  }
+
+  const rainNote = precipProb >= 40 ? ` (Note: precipitation probability is also elevated at ${precipProb}%.)` : ''
+
+  return {
+    type: 'outdoor',
+    category,
+    headline: `${category} outdoor conditions expected ${dayLabel} in ${locationName}`,
+    summary: `${summary}${rainNote}`,
+    recommendation,
+    riskLevel,
+    icon: temp >= 32 ? 'SunMedium' : 'Sun',
+  }
+}
+
+/**
  * Main function to generate a comprehensive advisory package for the UI or Chatbot.
  */
 export function generateLocationAdvisory({
@@ -285,6 +339,7 @@ export function generateLocationAdvisory({
   const general = generateGeneralAdvisory(metrics, locationName, risk)
   const travel = generateTravelAdvisory(metrics, locationName, risk)
   const agriculture = generateAgricultureAdvisory(metrics, locationName, risk)
+  const outdoor = generateOutdoorAdvisory(metrics, locationName, risk)
 
   return {
     locationName,
@@ -294,5 +349,6 @@ export function generateLocationAdvisory({
     general,
     travel,
     agriculture,
+    outdoor,
   }
 }

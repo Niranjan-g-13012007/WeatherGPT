@@ -35,6 +35,8 @@
   border-radius: 16px;
   font-size: 0.93rem;
   line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .from-bot .chat-message-bubble {
