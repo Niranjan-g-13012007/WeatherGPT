@@ -10,7 +10,9 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { useLocationWeather } from '../context/LocationContext.jsx'
-import { generateResponse } from '../utils/chatbot.js'
+import { LOCATIONS } from '../data/locations.js'
+import { fetchWeather, buildCurrentSnapshot } from '../services/weatherService.js'
+import { detectLocation, generateResponse } from '../utils/chatbot.js'
 import { evaluateRisk } from '../utils/riskEngine.js'
 import ChatMessage, { TypingIndicator } from '../components/ChatMessage.jsx'
 import ChatInput from '../components/ChatInput.jsx'
@@ -57,7 +59,7 @@ export default function Assistant() {
     setConversations((prev) => prev.map((c) => (c.id === activeId ? updater(c) : c)))
   }
 
-  function handleSend(text) {
+  async function handleSend(text) {
     updateActive((c) => ({
       ...c,
       title: c.messages.length === 0 ? text.slice(0, 40) : c.title,
@@ -65,16 +67,72 @@ export default function Assistant() {
     }))
     setIsTyping(true)
 
-    // Simulated latency so the typing indicator reads naturally.
-    // This is the seam where a future POST /api/chat call would go instead.
-    setTimeout(() => {
-      const reply = generateResponse(text, weatherData, location.name, snapshot)
-      updateActive((c) => ({
-        ...c,
-        messages: [...c.messages, { role: 'bot', content: reply }],
-      }))
-      setIsTyping(false)
-    }, 550 + Math.random() * 400)
+    const startTime = Date.now()
+    const targetDelay = 550 + Math.random() * 300
+
+    try {
+      // 1. Detect location mentioned in user question (defaults to currently selected location)
+      const targetLocation = detectLocation(text, location, LOCATIONS)
+
+      let activeLocationName = location.name
+      let activeWeatherData = weatherData
+      let activeSnapshot = snapshot
+
+      // 2 & 3. If a different location is mentioned, fetch Open-Meteo weather data for it
+      const isCustomLocation =
+        targetLocation &&
+        targetLocation.name &&
+        targetLocation.name.toLowerCase() !== location.name.toLowerCase()
+
+      if (
+        isCustomLocation &&
+        targetLocation.latitude != null &&
+        targetLocation.longitude != null
+      ) {
+        activeLocationName = targetLocation.name
+        activeWeatherData = await fetchWeather(
+          targetLocation.latitude,
+          targetLocation.longitude
+        )
+        activeSnapshot = buildCurrentSnapshot(activeWeatherData)
+      }
+
+      // 4. Generate answer using the appropriate location's weather data
+      const reply = await generateResponse(
+        text,
+        activeWeatherData,
+        activeLocationName,
+        activeSnapshot,
+        LOCATIONS
+      )
+
+      const elapsed = Date.now() - startTime
+      const remainingDelay = Math.max(0, targetDelay - elapsed)
+
+      setTimeout(() => {
+        updateActive((c) => ({
+          ...c,
+          messages: [...c.messages, { role: 'bot', content: reply }],
+        }))
+        setIsTyping(false)
+      }, remainingDelay)
+    } catch (err) {
+      console.error('Error generating response:', err)
+      setTimeout(() => {
+        updateActive((c) => ({
+          ...c,
+          messages: [
+            ...c.messages,
+            {
+              role: 'bot',
+              content:
+                "I couldn't fetch live weather data for that location right now. Please check your connection and try again.",
+            },
+          ],
+        }))
+        setIsTyping(false)
+      }, 300)
+    }
   }
 
   function handleNewChat() {
