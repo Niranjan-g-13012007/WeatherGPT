@@ -1,0 +1,30 @@
+.data-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: var(--color-navy-soft);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.data-state-spinner {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 3px solid var(--color-sky-100);
+  border-top-color: var(--color-cyan);
+}
+
+.data-state-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--color-mist);
+  color: var(--color-navy-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

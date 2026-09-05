@@ -1,0 +1,73 @@
+.location-picker {
+  position: relative;
+}
+
+.location-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-white);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-navy);
+}
+
+.location-picker-trigger:hover {
+  border-color: var(--color-cyan);
+}
+
+.location-picker-trigger svg.rotated {
+  transform: rotate(180deg);
+}
+
+.location-picker-trigger svg {
+  transition: transform 0.15s ease;
+}
+
+.location-picker-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--color-white);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lift);
+  padding: 6px;
+  z-index: 40;
+}
+
+.location-picker-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-navy);
+  text-align: left;
+}
+
+.location-picker-item span {
+  font-size: 0.72rem;
+  color: var(--color-navy-faint);
+  font-weight: 400;
+}
+
+.location-picker-item:hover {
+  background: var(--color-offwhite);
+}
+
+.location-picker-item.active {
+  background: var(--color-sky-50);
+  color: var(--color-cyan-dark);
+}

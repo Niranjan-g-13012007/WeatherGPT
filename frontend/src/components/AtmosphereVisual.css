@@ -1,0 +1,131 @@
+.atmos {
+  position: relative;
+  width: 420px;
+  height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.atmos-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px dashed var(--color-sky-100);
+}
+
+.ring-outer {
+  width: 400px;
+  height: 400px;
+}
+
+.ring-inner {
+  width: 300px;
+  height: 300px;
+  border-style: solid;
+  border-color: var(--color-line);
+}
+
+.atmos-core {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: linear-gradient(160deg, var(--color-white), var(--color-sky-50));
+  border: 1px solid var(--color-sky-100);
+  box-shadow: var(--shadow-lift);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  z-index: 2;
+}
+
+.atmos-core-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-navy-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.atmos-core-temp {
+  font-family: var(--font-display);
+  font-size: 3.2rem;
+  font-weight: 800;
+  color: var(--color-navy);
+  line-height: 1;
+}
+
+.atmos-core-sub {
+  font-size: 0.75rem;
+  color: var(--color-cyan-dark);
+  font-weight: 600;
+}
+
+.atmos-chip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-white);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  padding: 8px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-navy);
+  box-shadow: var(--shadow-soft);
+  white-space: nowrap;
+  z-index: 3;
+}
+
+.atmos-chip svg {
+  color: var(--color-cyan);
+}
+
+.chip-1 {
+  top: 10px;
+  left: 10px;
+}
+
+.chip-2 {
+  bottom: 30px;
+  right: -10px;
+}
+
+.chip-3 {
+  bottom: -6px;
+  left: 40px;
+}
+
+.atmos-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-amber);
+}
+
+.dot-1 {
+  top: 8%;
+  right: 20%;
+}
+
+.dot-2 {
+  bottom: 14%;
+  left: 6%;
+  background: var(--color-cyan);
+}
+
+@media (max-width: 980px) {
+  .atmos {
+    width: 320px;
+    height: 320px;
+    transform: scale(0.9);
+  }
+  .ring-outer { width: 300px; height: 300px; }
+  .ring-inner { width: 220px; height: 220px; }
+  .atmos-core { width: 150px; height: 150px; }
+  .atmos-core-temp { font-size: 2.4rem; }
+}
