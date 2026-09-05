@@ -27,13 +27,24 @@ const DAILY_FIELDS = [
   'wind_speed_10m_max',
 ].join(',')
 
+const CURRENT_FIELDS = [
+  'temperature_2m',
+  'relative_humidity_2m',
+  'precipitation',
+  'rain',
+  'weather_code',
+  'is_day',
+  'pressure_msl',
+  'wind_speed_10m',
+  'wind_direction_10m',
+].join(',')
+
 /**
  * Fetches hourly + daily forecast data for a given latitude/longitude.
  * Returns the raw Open-Meteo payload plus a couple of derived helpers.
  */
 export async function fetchWeather(latitude, longitude) {
-  const url = `${BASE_URL}?latitude=${latitude}&longitude=${longitude}&hourly=${HOURLY_FIELDS}&daily=${DAILY_FIELDS}&timezone=auto&forecast_days=7`
-
+  const url = `${BASE_URL}?latitude=${latitude}&longitude=${longitude}&current=${CURRENT_FIELDS}&hourly=${HOURLY_FIELDS}&daily=${DAILY_FIELDS}&timezone=auto&forecast_days=7`
   const response = await fetch(url)
 
   if (!response.ok) {
