@@ -88,3 +88,9 @@
   display: flex;
   justify-content: flex-end;
 }
+
+.weather-card-model-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-line);
+}

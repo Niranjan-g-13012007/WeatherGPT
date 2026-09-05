@@ -1,6 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { DEFAULT_LOCATION } from '../data/locations.js'
-import { fetchWeather, buildCurrentSnapshot, buildDailySummaries } from '../services/weatherService.js'
+import {
+  fetchWeather,
+  buildCurrentSnapshot,
+  buildDailySummaries,
+  getForecastModel,
+} from '../services/weatherService.js'
 
 const LocationContext = createContext(null)
 
@@ -28,18 +33,22 @@ export function LocationProvider({ children }) {
 
   const snapshot = useMemo(() => buildCurrentSnapshot(weatherData), [weatherData])
   const daily = useMemo(() => buildDailySummaries(weatherData), [weatherData])
+  const modelInfo = useMemo(() => getForecastModel(weatherData), [weatherData])
 
   const value = useMemo(
     () => ({
       location,
       setLocation,
       weatherData,
+      model: weatherData?.model,
+      modelType: weatherData?.modelType,
+      modelInfo,
       snapshot,
       daily,
       status,
       retry: () => load(location),
     }),
-    [location, weatherData, snapshot, daily, status, load]
+    [location, weatherData, modelInfo, snapshot, daily, status, load]
   )
 
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>

@@ -1,10 +1,20 @@
 import { Droplets, CloudRain, Wind, Gauge } from 'lucide-react'
 import WeatherIcon from './WeatherIcon.jsx'
 import RiskBadge from './RiskBadge.jsx'
+import ForecastModelCard from './ForecastModelCard.jsx'
 import { getWeatherCondition } from '../utils/weatherCode.js'
 import './WeatherCard.css'
 
-export default function WeatherCard({ locationName, snapshot, risk, compact = false }) {
+export default function WeatherCard({
+  locationName,
+  snapshot,
+  risk,
+  compact = false,
+  model = 'ECMWF IFS',
+  modelType = 'Numerical Weather Prediction',
+  modelInfo = null,
+  showModel = true,
+}) {
   if (!snapshot) return null
   const condition = getWeatherCondition(snapshot.weatherCode)
 
@@ -47,6 +57,17 @@ export default function WeatherCard({ locationName, snapshot, risk, compact = fa
       {risk && (
         <div className="weather-card-risk">
           <RiskBadge level={risk.level} compact />
+        </div>
+      )}
+
+      {showModel && (
+        <div className="weather-card-model-section">
+          <ForecastModelCard
+            model={model}
+            modelType={modelType}
+            modelInfo={modelInfo}
+            compact={compact}
+          />
         </div>
       )}
     </div>

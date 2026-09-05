@@ -24,10 +24,10 @@ import './Assistant.css'
 const SUGGESTIONS = [
   'Will it rain today?',
   'Will it rain tomorrow?',
+  'Which weather model are you using?',
   'Is it safe to travel this evening?',
   'What is the weather this weekend?',
   "Give me today's weather summary.",
-  'What is the temperature here?',
 ]
 
 function makeConversation(locationName) {
@@ -40,7 +40,8 @@ function makeConversation(locationName) {
 
 export default function Assistant() {
   const navigate = useNavigate()
-  const { location, setLocation, weatherData, snapshot, status, retry } = useLocationWeather()
+  const { location, setLocation, weatherData, snapshot, model, modelType, modelInfo, status, retry } =
+    useLocationWeather()
 
   const [conversations, setConversations] = useState(() => [makeConversation(location.name)])
   const [activeId, setActiveId] = useState(() => conversations[0]?.id)
@@ -230,7 +231,16 @@ export default function Assistant() {
         <p className="assistant-context-label">Current weather</p>
         {status === 'loading' && <LoadingState />}
         {status === 'error' && <ErrorState onRetry={retry} />}
-        {status === 'success' && <WeatherCard locationName={location.name} snapshot={snapshot} risk={risk} />}
+        {status === 'success' && (
+          <WeatherCard
+            locationName={location.name}
+            snapshot={snapshot}
+            risk={risk}
+            model={model}
+            modelType={modelType}
+            modelInfo={modelInfo}
+          />
+        )}
         <p className="assistant-context-footnote">Live data from Open-Meteo</p>
       </aside>
 
@@ -260,7 +270,14 @@ export default function Assistant() {
               {status === 'loading' && <LoadingState />}
               {status === 'error' && <ErrorState onRetry={retry} />}
               {status === 'success' && (
-                <WeatherCard locationName={location.name} snapshot={snapshot} risk={risk} />
+                <WeatherCard
+                  locationName={location.name}
+                  snapshot={snapshot}
+                  risk={risk}
+                  model={model}
+                  modelType={modelType}
+                  modelInfo={modelInfo}
+                />
               )}
               <p className="assistant-context-footnote">Live data from Open-Meteo</p>
             </motion.div>

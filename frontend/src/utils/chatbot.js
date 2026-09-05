@@ -23,7 +23,13 @@
 import { getWeatherCondition, isRainCategory } from './weatherCode.js'
 import { evaluateRisk } from './riskEngine.js'
 import { LOCATIONS } from '../data/locations.js'
-import { fetchWeather, buildCurrentSnapshot } from '../services/weatherService.js'
+import {
+  fetchWeather,
+  buildCurrentSnapshot,
+  getForecastModel,
+  getModelDescription,
+  getNwpExplanation,
+} from '../services/weatherService.js'
 
 
 
@@ -121,6 +127,25 @@ function peakPrecipWindow(hours) {
  */
 export function matchIntent(query) {
   const q = query.toLowerCase().trim()
+
+  // NWP / Forecast Model
+  if (
+    /\b(nwp|numerical weather prediction)\b/i.test(q) ||
+    /which.*(?:weather\s+)?model/i.test(q) ||
+    /what.*(?:weather\s+|nwp\s+|forecast\s+)?model/i.test(q) ||
+    (/\bmodel\b/i.test(q) && /(weather|forecast|nwp|ecmwf|gfs|wrf|use|used|using)/i.test(q)) ||
+    /(weather|forecast|nwp)\s+model/i.test(q) ||
+    /where does (?:this|the) forecast come from/i.test(q) ||
+    /where do you get (?:this|the|your) (?:forecast|weather)/i.test(q) ||
+    /source of (?:this|the) (?:forecast|weather)/i.test(q) ||
+    /forecast source/i.test(q) ||
+    /is this (?:forecast\s+)?based on (?:ecmwf|gfs|wrf|nwp)/i.test(q) ||
+    /how (?:is|are) (?:this|the)?\s*(?:weather\s+)?forecast(?:s)? generated/i.test(q) ||
+    /how do you generate (?:this|the)?\s*(?:weather\s+)?forecast/i.test(q) ||
+    /\b(ecmwf|ifs)\b/i.test(q)
+  ) {
+    return 'nwp_model'
+  }
 
   // Rain / precipitation
   if (
@@ -967,6 +992,49 @@ function generateWeekendResponse(
 
 
 // ============================================================
+// NWP FORECAST MODEL RESPONSE
+// ============================================================
+
+function generateModelResponse(query, weatherData, locationName) {
+  const modelInfo = getForecastModel(weatherData)
+  const q = query.toLowerCase()
+
+  if (!modelInfo || !modelInfo.isAvailable || !modelInfo.model) {
+    return 'Forecast model information is currently unavailable.'
+  }
+
+  const modelName = modelInfo.model
+  const modelType = modelInfo.modelType || 'Numerical Weather Prediction'
+  const explanation = modelInfo.explanation || getNwpExplanation()
+
+  // 1. "How is this forecast generated?"
+  if (/how.*(generated|created|calculated|computed|work)/.test(q)) {
+    return (
+      `This forecast is generated using the ${modelName} numerical weather prediction (NWP) model via ${modelInfo.provider}. ` +
+      `${explanation}`
+    )
+  }
+
+  // 2. "Is this forecast based on ECMWF?"
+  if (/is this.*(ecmwf|ifs)/.test(q)) {
+    return (
+      `Yes, this forecast is based on the ${modelName} numerical weather prediction model, accessed in real time via ${modelInfo.provider}.`
+    )
+  }
+
+  // 3. "Where does this forecast come from?" / source inquiries
+  if (/where.*come from|source|provider|who generates/.test(q)) {
+    return (
+      `This forecast is powered by the ${modelName} ${modelType.toLowerCase()} model, retrieved in real time through the ${modelInfo.provider} API.`
+    )
+  }
+
+  // 4. "What NWP model is being used?" / "Which weather model are you using?"
+  return `This forecast is based on the ${modelName} numerical weather prediction model.`
+}
+
+
+// ============================================================
 // MAIN RESPONSE FUNCTION
 // ============================================================
 
@@ -1026,6 +1094,10 @@ export async function generateResponse(
     }
   }
 
+  if (intent === 'nwp_model' && !activeWeatherData) {
+    return generateModelResponse(query, null, resolvedLocationName)
+  }
+
   if (!activeWeatherData) {
     return (
       "I don't have weather data to work with right now. " +
@@ -1034,6 +1106,17 @@ export async function generateResponse(
   }
 
   switch (intent) {
+
+    // -------------------------------
+    // NWP Model
+    // -------------------------------
+
+    case 'nwp_model':
+      return generateModelResponse(
+        query,
+        activeWeatherData,
+        resolvedLocationName
+      )
 
     // -------------------------------
     // Rain

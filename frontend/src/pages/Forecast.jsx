@@ -16,7 +16,8 @@ function formatDayShort(dateStr, index) {
 }
 
 export default function Forecast() {
-  const { location, setLocation, snapshot, daily, status, retry } = useLocationWeather()
+  const { location, setLocation, snapshot, daily, model, modelType, modelInfo, status, retry } =
+    useLocationWeather()
   const [activeDay, setActiveDay] = useState(0)
   const risk = snapshot ? evaluateRisk(snapshot) : null
 
@@ -46,7 +47,14 @@ export default function Forecast() {
         {status === 'success' && (
           <>
             <div className="forecast-top">
-              <WeatherCard locationName={location.name} snapshot={snapshot} risk={risk} />
+              <WeatherCard
+                locationName={location.name}
+                snapshot={snapshot}
+                risk={risk}
+                model={model}
+                modelType={modelType}
+                modelInfo={modelInfo}
+              />
 
               {selected && (
                 <motion.div

@@ -6,6 +6,22 @@
 
 const BASE_URL = 'https://api.open-meteo.com/v1/forecast'
 
+export const NWP_MODELS = {
+  ecmwf_ifs: {
+    id: 'ecmwf_ifs',
+    name: 'ECMWF IFS',
+    type: 'Numerical Weather Prediction',
+    provider: 'Open-Meteo',
+    resolution: '0.25° (~25 km)',
+    description:
+      'ECMWF IFS (Integrated Forecasting System) is a leading global numerical weather prediction model operated by the European Centre for Medium-Range Weather Forecasts.',
+    explanation:
+      'NWP (Numerical Weather Prediction) models use mathematical and physical atmospheric models to simulate and forecast future weather conditions.',
+  },
+}
+
+export const PRIMARY_NWP_MODEL = 'ecmwf_ifs'
+
 const HOURLY_FIELDS = [
   'temperature_2m',
   'relative_humidity_2m',
@@ -41,18 +57,111 @@ const CURRENT_FIELDS = [
 
 /**
  * Fetches hourly + daily forecast data for a given latitude/longitude.
- * Returns the raw Open-Meteo payload plus a couple of derived helpers.
+ * Uses ECMWF IFS as primary NWP model through Open-Meteo.
+ * Falls back gracefully to standard Open-Meteo forecast if model is unavailable.
  */
-export async function fetchWeather(latitude, longitude) {
-  const url = `${BASE_URL}?latitude=${latitude}&longitude=${longitude}&current=${CURRENT_FIELDS}&hourly=${HOURLY_FIELDS}&daily=${DAILY_FIELDS}&timezone=auto&forecast_days=7`
-  const response = await fetch(url)
+export async function fetchWeather(latitude, longitude, modelKey = PRIMARY_NWP_MODEL) {
+  const modelConfig = NWP_MODELS[modelKey] || NWP_MODELS[PRIMARY_NWP_MODEL]
+  const baseQuery = `latitude=${latitude}&longitude=${longitude}&current=${CURRENT_FIELDS}&hourly=${HOURLY_FIELDS}&daily=${DAILY_FIELDS}&timezone=auto&forecast_days=7`
 
-  if (!response.ok) {
-    throw new Error(`Open-Meteo request failed with status ${response.status}`)
+  // 1. Attempt NWP model request
+  try {
+    const url = `${BASE_URL}?${baseQuery}&models=${modelConfig.id}`
+    const response = await fetch(url)
+
+    if (response.ok) {
+      const data = await response.json()
+      return {
+        ...data,
+        weatherData: data,
+        model: modelConfig.name,
+        modelType: modelConfig.type,
+        modelId: modelConfig.id,
+        provider: modelConfig.provider,
+        resolution: modelConfig.resolution,
+        modelDescription: modelConfig.description,
+        modelExplanation: modelConfig.explanation,
+        modelUnavailable: false,
+      }
+    }
+  } catch (err) {
+    console.warn(`NWP model (${modelConfig.name}) request failed, attempting fallback:`, err)
   }
 
-  const data = await response.json()
-  return data
+  // 2. Graceful Fallback to standard Open-Meteo forecast
+  try {
+    const fallbackUrl = `${BASE_URL}?${baseQuery}`
+    const fallbackRes = await fetch(fallbackUrl)
+
+    if (!fallbackRes.ok) {
+      throw new Error(`Open-Meteo request failed with status ${fallbackRes.status}`)
+    }
+
+    const fallbackData = await fallbackRes.json()
+    return {
+      ...fallbackData,
+      weatherData: fallbackData,
+      model: null,
+      modelType: null,
+      modelId: null,
+      provider: 'Open-Meteo',
+      modelDescription: 'Forecast model information is currently unavailable.',
+      modelExplanation: modelConfig.explanation,
+      modelUnavailable: true,
+      modelMessage: 'Forecast model information is currently unavailable.',
+    }
+  } catch (err) {
+    throw new Error(`Open-Meteo forecast failed: ${err.message}`)
+  }
+}
+
+/**
+ * Reusable helper: Extracts model metadata from weather data.
+ */
+export function getForecastModel(weatherData) {
+  if (!weatherData) return null
+
+  if (weatherData.model) {
+    return {
+      model: weatherData.model,
+      modelType: weatherData.modelType || 'Numerical Weather Prediction',
+      provider: weatherData.provider || 'Open-Meteo',
+      resolution: weatherData.resolution || '0.25° (~25 km)',
+      description: weatherData.modelDescription || NWP_MODELS[PRIMARY_NWP_MODEL].description,
+      explanation: weatherData.modelExplanation || NWP_MODELS[PRIMARY_NWP_MODEL].explanation,
+      isAvailable: true,
+    }
+  }
+
+  if (weatherData.modelUnavailable) {
+    return {
+      model: null,
+      modelType: null,
+      isAvailable: false,
+      message: weatherData.modelMessage || 'Forecast model information is currently unavailable.',
+      explanation: NWP_MODELS[PRIMARY_NWP_MODEL].explanation,
+    }
+  }
+
+  return null
+}
+
+/**
+ * Reusable helper: Returns human-readable model description.
+ */
+export function getModelDescription(weatherData) {
+  const info = getForecastModel(weatherData)
+  if (!info || !info.isAvailable) {
+    return 'Forecast model information is currently unavailable.'
+  }
+  return info.description
+}
+
+/**
+ * Reusable helper: Returns standard NWP explanation text.
+ */
+export function getNwpExplanation() {
+  return NWP_MODELS[PRIMARY_NWP_MODEL].explanation
 }
 
 /**
@@ -78,7 +187,8 @@ export function getCurrentHourIndex(hourly) {
 /**
  * Builds a compact "current conditions" snapshot from the raw hourly block.
  */
-export function buildCurrentSnapshot(weatherData) {
+export function buildCurrentSnapshot(data) {
+  const weatherData = data?.weatherData || data
   if (!weatherData?.hourly) return null
   const { hourly } = weatherData
   const idx = getCurrentHourIndex(hourly)
@@ -100,7 +210,8 @@ export function buildCurrentSnapshot(weatherData) {
 /**
  * Builds a per-day summary array from the daily block, for the forecast page.
  */
-export function buildDailySummaries(weatherData) {
+export function buildDailySummaries(data) {
+  const weatherData = data?.weatherData || data
   if (!weatherData?.daily) return []
   const { daily } = weatherData
 
