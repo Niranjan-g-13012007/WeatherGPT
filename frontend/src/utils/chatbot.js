@@ -123,103 +123,106 @@ function peakPrecipWindow(hours) {
 // ============================================================
 
 /**
- * Detect what the user wants to know.
+ * Check if the query asks about the weather forecast model / NWP / source.
  */
-export function matchIntent(query) {
+export function isModelInquiry(query) {
+  if (!query || typeof query !== 'string') return false
   const q = query.toLowerCase().trim()
 
-  // NWP / Forecast Model
-  if (
+  return (
     /\b(nwp|numerical weather prediction)\b/i.test(q) ||
     /which.*(?:weather\s+)?model/i.test(q) ||
     /what.*(?:weather\s+|nwp\s+|forecast\s+)?model/i.test(q) ||
-    (/\bmodel\b/i.test(q) && /(weather|forecast|nwp|ecmwf|gfs|wrf|use|used|using)/i.test(q)) ||
+    (/\bmodel\b/i.test(q) && /(weather|forecast|nwp|ecmwf|gfs|wrf|use|used|using|prediction)/i.test(q)) ||
     /(weather|forecast|nwp)\s+model/i.test(q) ||
-    /where does (?:this|the) forecast come from/i.test(q) ||
-    /where do you get (?:this|the|your) (?:forecast|weather)/i.test(q) ||
-    /source of (?:this|the) (?:forecast|weather)/i.test(q) ||
+    /where.*(?:forecast|weather|data).*come from/i.test(q) ||
+    /where do you get (?:this|the|your) (?:forecast|weather|data)/i.test(q) ||
+    /source of (?:this|the) (?:forecast|weather|data)/i.test(q) ||
     /forecast source/i.test(q) ||
     /is this (?:forecast\s+)?based on (?:ecmwf|gfs|wrf|nwp)/i.test(q) ||
     /how (?:is|are) (?:this|the)?\s*(?:weather\s+)?forecast(?:s)? generated/i.test(q) ||
     /how do you generate (?:this|the)?\s*(?:weather\s+)?forecast/i.test(q) ||
     /\b(ecmwf|ifs)\b/i.test(q)
-  ) {
-    return 'nwp_model'
-  }
+  )
+}
+
+/**
+ * Detect specific weather variable intent (rain, temperature, etc.).
+ */
+export function detectWeatherIntent(query) {
+  if (!query || typeof query !== 'string') return null
+  const q = query.toLowerCase().trim()
 
   // Rain / precipitation
-  if (
-    /rain|raining|precip|shower|drizzle|umbrella/.test(q)
-  ) {
+  if (/rain|raining|precip|shower|drizzle|umbrella/.test(q)) {
     return 'rain'
   }
 
   // Travel / outdoor advice
-  if (
-    /travel|go out|step out|drive|commute|journey|trip|outdoor|outside|safe/.test(
-      q
-    )
-  ) {
+  if (/travel|go out|step out|drive|commute|journey|trip|outdoor|outside|safe/.test(q)) {
     return 'travel_safety'
   }
 
   // Weekend
-  if (
-    /weekend|saturday|sunday/.test(q)
-  ) {
+  if (/weekend|saturday|sunday/.test(q)) {
     return 'weekend'
   }
 
-  // General summary
-  if (
-    /summary|overview|weather today|how.*weather|weather like/.test(
-      q
-    )
-  ) {
-    return 'summary'
-  }
-
   // Temperature
-  if (
-    /temperature|temp|hot|cold|heat|cool|degrees|°c|°f/.test(
-      q
-    )
-  ) {
+  if (/temperature|temp|hot|cold|heat|cool|degrees|°c|°f/.test(q)) {
     return 'temperature'
   }
 
   // Wind
-  if (
-    /wind|windy|breeze|gust/.test(q)
-  ) {
+  if (/wind|windy|breeze|gust/.test(q)) {
     return 'wind'
   }
 
   // Humidity
-  if (
-    /humid|humidity|moisture/.test(q)
-  ) {
+  if (/humid|humidity|moisture/.test(q)) {
     return 'humidity'
   }
 
   // Pressure
-  if (
-    /pressure|atmospheric pressure/.test(q)
-  ) {
+  if (/pressure|atmospheric pressure/.test(q)) {
     return 'pressure'
   }
 
   // Risk / warning
-  if (
-    /risk|warning|alert|danger|hazard|severe|extreme/.test(
-      q
-    )
-  ) {
+  if (/risk|warning|alert|danger|hazard|severe|extreme/.test(q)) {
     return 'risk'
+  }
+
+  // General summary (only if explicitly asking about general conditions and not a pure model query)
+  if (
+    /summary|overview|weather today|weather tomorrow|how.*weather|weather like/.test(q) &&
+    !isModelInquiry(q)
+  ) {
+    return 'summary'
+  }
+
+  return null
+}
+
+/**
+ * Detect what the user wants to know.
+ */
+export function matchIntent(query) {
+  const weatherIntent = detectWeatherIntent(query)
+  const hasModel = isModelInquiry(query)
+
+  if (weatherIntent) {
+    return weatherIntent
+  }
+
+  if (hasModel) {
+    return 'nwp_model'
   }
 
   return 'weather'
 }
+
+
 
 
 /**
@@ -327,11 +330,16 @@ export function parseWeatherQuery(
   selectedLocation,
   locations = LOCATIONS
 ) {
+  const weatherIntent = detectWeatherIntent(query)
+  const hasModel = isModelInquiry(query)
+  const isCompound = Boolean(weatherIntent && hasModel)
+
   return {
-    intent: matchIntent(query),
-
+    intent: weatherIntent || (hasModel ? 'nwp_model' : 'weather'),
+    weatherIntent,
+    hasModelQuery: hasModel,
+    isCompoundQuery: isCompound,
     time: detectTime(query),
-
     location: detectLocation(
       query,
       selectedLocation,
@@ -434,7 +442,8 @@ function summarizeDay(
 function generateRainResponse(
   query,
   weatherData,
-  locationName
+  locationName,
+  isCompound = false
 ) {
   const { daily, hourly } = weatherData
 
@@ -465,6 +474,31 @@ function generateRainResponse(
 
     if (probability == null) {
       return `I couldn't determine tomorrow's rain probability for ${locationName}.`
+    }
+
+    if (isCompound) {
+      const roundedProb = Math.round(probability)
+      const precipVal = precipitation != null ? precipitation : 0
+      const modelInfo = getForecastModel(weatherData)
+      const modelSuffix = modelInfo?.isAvailable && modelInfo?.model
+        ? ` The forecast is based on the ${modelInfo.model} numerical weather prediction model via ${modelInfo.provider}.`
+        : (modelInfo?.message ? ` ${modelInfo.message}` : '')
+
+      if (probability >= 70) {
+        return (
+          `Rain is quite likely in ${locationName} tomorrow, with an ${roundedProb}% precipitation probability and approximately ${precipVal} mm of expected precipitation.${modelSuffix}`
+        )
+      }
+
+      if (probability >= 40) {
+        return (
+          `There is a moderate chance of rain in ${locationName} tomorrow, with a ${roundedProb}% precipitation probability and approximately ${precipVal} mm of expected precipitation.${modelSuffix}`
+        )
+      }
+
+      return (
+        `Rain is less likely in ${locationName} tomorrow, with a precipitation probability of around ${roundedProb}% and approximately ${precipVal} mm of expected precipitation.${modelSuffix}`
+      )
     }
 
     if (probability >= 70) {
@@ -1022,11 +1056,9 @@ function generateModelResponse(query, weatherData, locationName) {
     )
   }
 
-  // 3. "Where does this forecast come from?" / source inquiries
-  if (/where.*come from|source|provider|who generates/.test(q)) {
-    return (
-      `This forecast is powered by the ${modelName} ${modelType.toLowerCase()} model, retrieved in real time through the ${modelInfo.provider} API.`
-    )
+  // 3. "Where does this weather forecast come from?" / source inquiries
+  if (/where.*come from|source|provider|who generates/i.test(q)) {
+    return `This forecast comes from ${modelInfo.provider} using the ${modelName} numerical weather prediction model.`
   }
 
   // 4. "What NWP model is being used?" / "Which weather model are you using?"
@@ -1105,6 +1137,8 @@ export async function generateResponse(
     )
   }
 
+  let reply = ''
+
   switch (intent) {
 
     // -------------------------------
@@ -1123,11 +1157,13 @@ export async function generateResponse(
     // -------------------------------
 
     case 'rain':
-      return generateRainResponse(
+      reply = generateRainResponse(
         query,
         activeWeatherData,
-        resolvedLocationName
+        resolvedLocationName,
+        parsed.isCompoundQuery
       )
+      break
 
 
     // -------------------------------
@@ -1135,12 +1171,13 @@ export async function generateResponse(
     // -------------------------------
 
     case 'temperature':
-      return generateTemperatureResponse(
+      reply = generateTemperatureResponse(
         query,
         activeWeatherData,
         resolvedLocationName,
         activeSnapshot
       )
+      break
 
 
     // -------------------------------
@@ -1148,10 +1185,11 @@ export async function generateResponse(
     // -------------------------------
 
     case 'humidity':
-      return generateHumidityResponse(
+      reply = generateHumidityResponse(
         resolvedLocationName,
         activeSnapshot
       )
+      break
 
 
     // -------------------------------
@@ -1159,10 +1197,11 @@ export async function generateResponse(
     // -------------------------------
 
     case 'wind':
-      return generateWindResponse(
+      reply = generateWindResponse(
         resolvedLocationName,
         activeSnapshot
       )
+      break
 
 
     // -------------------------------
@@ -1170,10 +1209,11 @@ export async function generateResponse(
     // -------------------------------
 
     case 'pressure':
-      return generatePressureResponse(
+      reply = generatePressureResponse(
         resolvedLocationName,
         activeSnapshot
       )
+      break
 
 
     // -------------------------------
@@ -1181,10 +1221,11 @@ export async function generateResponse(
     // -------------------------------
 
     case 'travel_safety':
-      return generateTravelSafetyResponse(
+      reply = generateTravelSafetyResponse(
         resolvedLocationName,
         activeSnapshot
       )
+      break
 
 
     // -------------------------------
@@ -1192,10 +1233,11 @@ export async function generateResponse(
     // -------------------------------
 
     case 'risk':
-      return generateRiskResponse(
+      reply = generateRiskResponse(
         resolvedLocationName,
         activeSnapshot
       )
+      break
 
 
     // -------------------------------
@@ -1203,20 +1245,23 @@ export async function generateResponse(
     // -------------------------------
 
     case 'weekend':
-      return generateWeekendResponse(
+      reply = generateWeekendResponse(
         activeWeatherData,
         resolvedLocationName
       )
+      break
+
     // -------------------------------
     // General summary
     // -------------------------------
 
     case 'summary':
-      return generateWeatherResponse(
+      reply = generateWeatherResponse(
         resolvedLocationName,
         activeWeatherData,
         activeSnapshot
       )
+      break
 
 
     // -------------------------------
@@ -1224,12 +1269,24 @@ export async function generateResponse(
     // -------------------------------
 
     default:
-      return generateWeatherResponse(
+      reply = generateWeatherResponse(
         resolvedLocationName,
         activeWeatherData,
         activeSnapshot
       )
+      break
   }
+
+  // If this was a compound query (weather question + model inquiry) and not already handled by rain tomorrow:
+  if (parsed.isCompoundQuery && !(intent === 'rain' && parsed.time === 'tomorrow')) {
+    const modelInfo = getForecastModel(activeWeatherData)
+    const modelSentence = modelInfo?.isAvailable && modelInfo?.model
+      ? ` The forecast is based on the ${modelInfo.model} numerical weather prediction model via ${modelInfo.provider}.`
+      : (modelInfo?.message ? ` ${modelInfo.message}` : '')
+    reply += modelSentence
+  }
+
+  return reply
 }
 
 
