@@ -13,10 +13,36 @@
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--color-navy);
+  transition: all 0.15s ease;
 }
 
 .location-picker-trigger:hover {
   border-color: var(--color-cyan);
+}
+
+.location-picker-trigger.is-geolocation {
+  border-color: var(--color-cyan);
+  background: #F4FBFC;
+}
+
+.location-geo-icon {
+  color: var(--color-cyan);
+}
+
+.location-trigger-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.location-trigger-badge {
+  font-size: 0.62rem;
+  font-weight: 800;
+  background: var(--color-cyan);
+  color: var(--color-white);
+  padding: 1px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
 }
 
 .location-picker-trigger svg.rotated {
@@ -31,15 +57,125 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  width: 220px;
-  max-height: 320px;
-  overflow-y: auto;
+  width: 270px;
   background: var(--color-white);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lift);
-  padding: 6px;
-  z-index: 40;
+  padding: 8px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Use My Location Button */
+.location-picker-top-action {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.location-use-my-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--color-navy);
+  color: var(--color-white);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.location-use-my-btn:hover:not(:disabled) {
+  background: #152E4D;
+}
+
+.location-use-my-btn:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+/* Search Bar */
+.location-picker-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-offwhite);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+.location-picker-search-bar:focus-within {
+  border-color: var(--color-cyan);
+  background: var(--color-white);
+}
+
+.location-search-icon {
+  color: var(--color-navy-faint);
+  flex-shrink: 0;
+}
+
+.location-picker-search-bar input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.8rem;
+  color: var(--color-navy);
+  width: 100%;
+}
+
+.location-picker-search-bar input::placeholder {
+  color: var(--color-navy-faint);
+}
+
+/* Formatted Coordinates Preview */
+.location-picker-coords {
+  background: #F8FAFC;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.location-coords-text {
+  font-size: 0.68rem;
+  color: var(--color-navy-faint);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* List Container */
+.location-picker-list-container {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.location-section-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-navy-faint);
+  padding: 6px 6px 2px;
+}
+
+.location-empty-msg {
+  font-size: 0.78rem;
+  color: var(--color-navy-faint);
+  padding: 10px 8px;
+  text-align: center;
 }
 
 .location-picker-item {
@@ -50,15 +186,26 @@
   background: transparent;
   border: none;
   border-radius: var(--radius-sm);
-  padding: 9px 10px;
-  font-size: 0.85rem;
-  font-weight: 500;
+  padding: 8px 10px;
+  font-size: 0.82rem;
   color: var(--color-navy);
   text-align: left;
+  transition: all 0.12s ease;
 }
 
-.location-picker-item span {
-  font-size: 0.72rem;
+.location-item-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.location-item-primary strong {
+  font-weight: 600;
+  font-size: 0.83rem;
+}
+
+.location-item-primary span {
+  font-size: 0.7rem;
   color: var(--color-navy-faint);
   font-weight: 400;
 }
@@ -70,4 +217,29 @@
 .location-picker-item.active {
   background: var(--color-sky-50);
   color: var(--color-cyan-dark);
+}
+
+.location-active-check {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--color-cyan-dark);
+}
+
+/* Spinner */
+.location-spinner {
+  animation: spin 1s linear infinite;
+}
+
+.location-spinner-subtle {
+  animation: spin 1s linear infinite;
+  color: var(--color-cyan);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }

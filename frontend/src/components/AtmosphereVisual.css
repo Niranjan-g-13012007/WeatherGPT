@@ -47,6 +47,11 @@
   color: var(--color-navy-faint);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
 }
 
 .atmos-core-temp {
