@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { AuthProvider } from './context/AuthContext.jsx'
 import { LocationProvider } from './context/LocationContext.jsx'
+import ProtectedRoute from './components/ProtectedRoute.jsx'
 import Navbar from './components/Navbar.jsx'
 import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
@@ -10,57 +12,66 @@ import About from './pages/About.jsx'
 
 export default function App() {
   return (
-    <LocationProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <>
-                <Navbar />
-                <Home />
-              </>
-            }
-          />
-          <Route
-            path="/login"
-            element={
-              <>
-                <Navbar />
-                <Login />
-              </>
-            }
-          />
-          <Route
-            path="/signup"
-            element={
-              <>
-                <Navbar />
-                <Signup />
-              </>
-            }
-          />
-          <Route path="/assistant" element={<Assistant />} />
-          <Route
-            path="/forecast"
-            element={
-              <>
-                <Navbar />
-                <Forecast />
-              </>
-            }
-          />
-          <Route
-            path="/about"
-            element={
-              <>
-                <Navbar />
-                <About />
-              </>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    </LocationProvider>
+    <AuthProvider>
+      <LocationProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <>
+                  <Navbar />
+                  <Home />
+                </>
+              }
+            />
+            <Route
+              path="/login"
+              element={
+                <>
+                  <Navbar />
+                  <Login />
+                </>
+              }
+            />
+            <Route
+              path="/signup"
+              element={
+                <>
+                  <Navbar />
+                  <Signup />
+                </>
+              }
+            />
+            <Route
+              path="/assistant"
+              element={
+                <ProtectedRoute>
+                  <Assistant />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/forecast"
+              element={
+                <>
+                  <Navbar />
+                  <Forecast />
+                </>
+              }
+            />
+            <Route
+              path="/about"
+              element={
+                <>
+                  <Navbar />
+                  <About />
+                </>
+              }
+            />
+          </Routes>
+        </BrowserRouter>
+      </LocationProvider>
+    </AuthProvider>
   )
 }

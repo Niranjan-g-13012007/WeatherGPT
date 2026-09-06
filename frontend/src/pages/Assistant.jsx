@@ -10,7 +10,9 @@ import {
   Sparkles,
   Navigation,
   AlertCircle,
+  LogOut,
 } from 'lucide-react'
+import { useAuth } from '../context/AuthContext.jsx'
 import { useLocationWeather } from '../context/LocationContext.jsx'
 import { LOCATIONS } from '../data/locations.js'
 import { fetchWeather, buildCurrentSnapshot } from '../services/weatherService.js'
@@ -43,6 +45,7 @@ function makeConversation(locationName) {
 
 export default function Assistant() {
   const navigate = useNavigate()
+  const { user, logout } = useAuth()
   const {
     location,
     setLocation,
@@ -173,6 +176,11 @@ export default function Assistant() {
     setActiveId(conv.id)
   }
 
+  async function handleLogout() {
+    await logout()
+    navigate('/login')
+  }
+
   return (
     <div className="assistant">
       <aside className="assistant-sidebar">
@@ -196,6 +204,84 @@ export default function Assistant() {
             </button>
           ))}
         </div>
+
+        {user && (
+          <div
+            style={{
+              marginTop: 'auto',
+              paddingTop: '14px',
+              borderTop: '1px solid var(--color-line, #e2e8f0)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                overflow: 'hidden',
+              }}
+              title={user.email}
+            >
+              {user.avatar ? (
+                <img
+                  src={user.avatar}
+                  alt={user.name}
+                  style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0 }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: '50%',
+                    background: 'var(--color-navy-faint, #94a3b8)',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
+                  {user.name ? user.name[0].toUpperCase() : 'U'}
+                </div>
+              )}
+              <span
+                style={{
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  color: 'var(--color-navy, #0f172a)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {user.name}
+              </span>
+            </div>
+            <button
+              onClick={handleLogout}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--color-navy-soft, #64748b)',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                borderRadius: '4px',
+              }}
+              title="Log out"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
       </aside>
 
       <main className="assistant-main">
