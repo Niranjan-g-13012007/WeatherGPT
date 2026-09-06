@@ -11,9 +11,11 @@ import {
   Navigation,
   AlertCircle,
   LogOut,
+  Bell,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useLocationWeather } from '../context/LocationContext.jsx'
+import { useAlerts } from '../context/AlertContext.jsx'
 import { LOCATIONS } from '../data/locations.js'
 import { fetchWeather, buildCurrentSnapshot } from '../services/weatherService.js'
 import { detectLocation, resolveTargetLocation, generateResponse } from '../utils/chatbot.js'
@@ -23,6 +25,9 @@ import ChatInput from '../components/ChatInput.jsx'
 import WeatherCard from '../components/WeatherCard.jsx'
 import LocationPicker from '../components/LocationPicker.jsx'
 import { LoadingState, ErrorState } from '../components/DataState.jsx'
+import NotificationDrawer from '../components/NotificationDrawer.jsx'
+import AlertDetailModal from '../components/AlertDetailModal.jsx'
+import InAppAlertBanner from '../components/InAppAlertBanner.jsx'
 import './Assistant.css'
 
 const SUGGESTIONS = [
@@ -46,6 +51,7 @@ function makeConversation(locationName) {
 export default function Assistant() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const { openPanel, unreadCount } = useAlerts()
   const {
     location,
     setLocation,
@@ -192,6 +198,15 @@ export default function Assistant() {
           <MessageSquarePlus size={16} strokeWidth={2.1} /> New chat
         </button>
 
+        <button className="assistant-notifications-btn" onClick={openPanel}>
+          <span className="assistant-notif-left">
+            <Bell size={16} strokeWidth={2.1} /> Notifications
+          </span>
+          {unreadCount > 0 && (
+            <span className="assistant-notif-badge">{unreadCount}</span>
+          )}
+        </button>
+
         <div className="assistant-history">
           <span className="assistant-history-label">Recent</span>
           {conversations.map((c) => (
@@ -303,6 +318,8 @@ export default function Assistant() {
             </button>
           </div>
         </header>
+
+        <InAppAlertBanner />
 
         {isDetectingLocation && (
           <div className="assistant-location-banner info">
@@ -419,6 +436,9 @@ export default function Assistant() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <NotificationDrawer />
+      <AlertDetailModal />
     </div>
   )
 }

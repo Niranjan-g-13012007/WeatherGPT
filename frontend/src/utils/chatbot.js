@@ -22,6 +22,7 @@
 
 import { getWeatherCondition, isRainCategory } from './weatherCode.js'
 import { evaluateRisk } from './riskEngine.js'
+import { evaluateForecastAlerts } from './alertEngine.js'
 import { LOCATIONS } from '../data/locations.js'
 import {
   fetchWeather,
@@ -219,8 +220,8 @@ export function detectAllIntents(query) {
     intents.push('pressure')
   }
 
-  // Risk / warning
-  if (/risk|warning|alert|danger|hazard|severe|extreme/.test(q)) {
+  // Risk / warning / alerts / danger
+  if (/\b(?:alert|alerts|warning|warnings|danger|dangerous|hazard|hazardous|severe|extreme|worried|precaution|precautions)\b/i.test(q)) {
     intents.push('risk')
   }
 
@@ -293,8 +294,8 @@ export function detectWeatherIntent(query) {
     return 'pressure'
   }
 
-  // 11. Risk / warning
-  if (/risk|warning|alert|danger|hazard|severe|extreme/.test(q)) {
+  // 11. Risk / warning / alerts / danger
+  if (/\b(?:alert|alerts|warning|warnings|danger|dangerous|hazard|hazardous|severe|extreme|worried|precaution|precautions)\b/i.test(q)) {
     return 'risk'
   }
 
@@ -1126,20 +1127,89 @@ function generateAdvisoryResponse(
 
 function generateRiskResponse(
   locationName,
-  snapshot
+  snapshot,
+  weatherData,
+  timeStr = 'today',
+  query = ''
 ) {
-  if (!snapshot) {
-    return `I couldn't evaluate the weather risk for ${locationName}.`
+  const isTomorrow = timeStr === 'tomorrow' || /\btomorrow\b/i.test(query)
+  const dayText = isTomorrow ? 'tomorrow' : 'currently / today'
+
+  // 1. If full weather forecast data is available, evaluate forecast alerts
+  if (weatherData?.daily) {
+    const alerts = evaluateForecastAlerts(weatherData, locationName)
+
+    // Filter alerts for the relevant day if requested
+    const targetDayOffset = isTomorrow ? 1 : 0
+    const targetDateStr = weatherData.daily.time?.[targetDayOffset]
+
+    const matchedAlerts = targetDateStr
+      ? alerts.filter((a) => a.id.includes(targetDateStr))
+      : alerts
+
+    const alertToReport =
+      matchedAlerts.length > 0
+        ? matchedAlerts[0]
+        : alerts.length > 0 && !isTomorrow
+        ? alerts[0]
+        : null
+
+    if (alertToReport) {
+      const metricDetails = []
+      if (
+        alertToReport.metrics?.precipitationProbability != null &&
+        alertToReport.metrics.precipitationProbability > 0
+      ) {
+        metricDetails.push(`• Rain probability: ${alertToReport.metrics.precipitationProbability}%`)
+      }
+      if (
+        alertToReport.metrics?.precipitationSum != null &&
+        alertToReport.metrics.precipitationSum > 0
+      ) {
+        metricDetails.push(`• Expected precipitation: ${alertToReport.metrics.precipitationSum} mm`)
+      }
+      if (alertToReport.metrics?.tempMax != null) {
+        metricDetails.push(`• Forecast max temperature: ${alertToReport.metrics.tempMax}°C`)
+      }
+      if (
+        alertToReport.metrics?.windSpeed != null &&
+        alertToReport.metrics.windSpeed >= 25
+      ) {
+        metricDetails.push(`• Expected wind gusts: ${alertToReport.metrics.windSpeed} km/h`)
+      }
+
+      const metricsBlock =
+        metricDetails.length > 0 ? `\n\nKey forecast metrics:\n${metricDetails.join('\n')}` : ''
+
+      return (
+        `⚠️ Weather Alert for ${locationName}\n\n` +
+        `**${alertToReport.title} (${alertToReport.severity} Risk)**\n` +
+        `${alertToReport.message}` +
+        metricsBlock +
+        `\nExpected period: ${alertToReport.expectedAt}\n\n` +
+        `Recommendation:\n${alertToReport.recommendedAction}\n\n` +
+        `Source: WeatherGPT forecast analysis using Open-Meteo ECMWF IFS NWP data. (Advisory risk estimate, not an official government/IMD warning.)`
+      )
+    }
   }
 
-  const risk =
-    evaluateRisk(snapshot)
+  // 2. Fallback to snapshot risk evaluation
+  if (snapshot) {
+    const risk = evaluateRisk(snapshot)
+    if (risk.level !== 'LOW') {
+      return (
+        `⚠️ Weather Risk for ${locationName}\n\n` +
+        `**${risk.title} (${risk.level} Risk)**\n` +
+        `${risk.description}\n\n` +
+        `Recommendation:\n${risk.recommendation}\n\n` +
+        `Source: Open-Meteo forecast analysis. (Advisory risk estimate, not an official government warning.)`
+      )
+    }
+  }
 
   return (
-    `${risk.title}. ` +
-    `${risk.description} ` +
-    `${risk.recommendation} ` +
-    `(This is a prototype estimate, not an official weather warning.)`
+    `✓ No significant weather alerts for ${locationName} ${dayText}.\n\n` +
+    `Forecast analysis via Open-Meteo ECMWF IFS indicates settled conditions without severe rainfall, storms, or hazardous weather risks.`
   )
 }
 
@@ -1444,7 +1514,20 @@ export async function generateResponse(
       )
     }
 
-    // 7. NWP model
+    // 7. Weather Alerts / Risk
+    if (parsed.allIntents.includes('risk')) {
+      sections.push(
+        generateRiskResponse(
+          resolvedLocationName,
+          activeSnapshot,
+          activeWeatherData,
+          parsed.time,
+          query
+        )
+      )
+    }
+
+    // 8. NWP model
     if (
       parsed.allIntents.includes('nwp_model') ||
       parsed.hasModelQuery ||
@@ -1584,7 +1667,10 @@ export async function generateResponse(
     case 'risk':
       reply = generateRiskResponse(
         resolvedLocationName,
-        activeSnapshot
+        activeSnapshot,
+        activeWeatherData,
+        parsed.time,
+        query
       )
       break
 

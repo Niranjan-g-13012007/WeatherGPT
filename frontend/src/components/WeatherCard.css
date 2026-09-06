@@ -55,6 +55,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  margin-bottom: 14px;
 }
 
 .weather-card-metric {
@@ -80,13 +81,116 @@
   color: var(--color-navy-faint);
 }
 
-.weather-card-grid {
-  margin-bottom: 14px;
-}
-
 .weather-card-risk {
   display: flex;
   justify-content: flex-end;
+}
+
+/* Weather Card Alert Section */
+.weather-card-alert-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-line);
+}
+
+.weather-card-alert-header {
+  margin-bottom: 8px;
+}
+
+.weather-card-alert-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-navy-faint);
+  text-transform: uppercase;
+}
+
+.weather-card-alert-box {
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: var(--color-offwhite);
+  border: 1px solid var(--color-line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.weather-card-alert-box.severity-extreme {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.weather-card-alert-box.severity-high {
+  background: #fff7ed;
+  border-color: #ffedd5;
+}
+
+.weather-card-alert-box.severity-moderate {
+  background: #fffbeb;
+  border-color: #fef3c7;
+}
+
+.weather-card-alert-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+}
+
+.alert-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.dot-extreme {
+  background: var(--color-risk-extreme);
+}
+
+.dot-high {
+  background: var(--color-risk-high);
+}
+
+.dot-moderate {
+  background: var(--color-amber);
+}
+
+.dot-low {
+  background: var(--color-risk-low);
+}
+
+.weather-card-alert-text {
+  font-size: 0.78rem;
+  color: var(--color-navy-soft);
+  line-height: 1.4;
+}
+
+.weather-card-alert-btn {
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  color: var(--color-cyan-dark);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0;
+  cursor: pointer;
+}
+
+.weather-card-alert-btn:hover {
+  text-decoration: underline;
+}
+
+.weather-card-no-alert {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--color-risk-low);
+  padding: 8px 10px;
+  background: #f0fdf4;
+  border-radius: var(--radius-sm);
+  border: 1px solid #dcfce7;
+  font-weight: 500;
 }
 
 .weather-card-model-section {

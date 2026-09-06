@@ -1,8 +1,9 @@
-import { Droplets, CloudRain, Wind, Gauge } from 'lucide-react'
+import { Droplets, CloudRain, Wind, Gauge, CheckCircle2 } from 'lucide-react'
 import WeatherIcon from './WeatherIcon.jsx'
 import RiskBadge from './RiskBadge.jsx'
 import ForecastModelCard from './ForecastModelCard.jsx'
 import { getWeatherCondition } from '../utils/weatherCode.js'
+import { useAlerts } from '../context/AlertContext.jsx'
 import './WeatherCard.css'
 
 export default function WeatherCard({
@@ -15,8 +16,11 @@ export default function WeatherCard({
   modelInfo = null,
   showModel = true,
 }) {
+  const { activeAlerts, setSelectedAlert } = useAlerts()
+
   if (!snapshot) return null
   const condition = getWeatherCondition(snapshot.weatherCode)
+  const topAlert = activeAlerts && activeAlerts.length > 0 ? activeAlerts[0] : null
 
   return (
     <div className={`weather-card ${compact ? 'compact' : ''}`}>
@@ -59,6 +63,34 @@ export default function WeatherCard({
           <RiskBadge level={risk.level} compact />
         </div>
       )}
+
+      {/* Extreme Weather Alerts Section */}
+      <div className="weather-card-alert-section">
+        <div className="weather-card-alert-header">
+          <span className="weather-card-alert-title">WEATHER ALERT</span>
+        </div>
+
+        {topAlert ? (
+          <div className={`weather-card-alert-box severity-${topAlert.severity.toLowerCase()}`}>
+            <div className="weather-card-alert-status">
+              <span className={`alert-dot dot-${topAlert.severity.toLowerCase()}`}></span>
+              <strong>{topAlert.severity} RISK</strong>
+            </div>
+            <p className="weather-card-alert-text">{topAlert.message}</p>
+            <button
+              className="weather-card-alert-btn"
+              onClick={() => setSelectedAlert(topAlert)}
+            >
+              View alert →
+            </button>
+          </div>
+        ) : (
+          <div className="weather-card-no-alert">
+            <CheckCircle2 size={13} />
+            <span>No significant weather alerts</span>
+          </div>
+        )}
+      </div>
 
       {showModel && (
         <div className="weather-card-model-section">
