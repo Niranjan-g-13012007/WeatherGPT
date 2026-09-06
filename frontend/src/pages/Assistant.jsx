@@ -19,6 +19,7 @@ import { useLocationWeather } from '../context/LocationContext.jsx'
 import { useAlerts } from '../context/AlertContext.jsx'
 import { LOCATIONS } from '../data/locations.js'
 import { fetchWeather, buildCurrentSnapshot } from '../services/weatherService.js'
+import { sendChatMessage } from '../services/chatService.js'
 import { detectLocation, resolveTargetLocation, generateResponse } from '../utils/chatbot.js'
 import { evaluateRisk } from '../utils/riskEngine.js'
 import ChatMessage, { TypingIndicator } from '../components/ChatMessage.jsx'
@@ -113,40 +114,16 @@ export default function Assistant() {
     const targetDelay = 550 + Math.random() * 300
 
     try {
-      // 1. Detect location mentioned in user question (defaults to currently selected location)
-      const targetLocation = await resolveTargetLocation(text, location, LOCATIONS)
+      const recentHistory = (active?.messages || []).slice(-6)
+      const chatResult = await sendChatMessage({
+        message: text,
+        location,
+        conversationHistory: recentHistory,
+        weatherData,
+        snapshot,
+      })
 
-      let activeLocationName = location.name
-      let activeWeatherData = weatherData
-      let activeSnapshot = snapshot
-
-      // 2 & 3. If a different location is mentioned, fetch Open-Meteo weather data for it
-      const isCustomLocation =
-        targetLocation &&
-        targetLocation.name &&
-        targetLocation.name.toLowerCase() !== location.name.toLowerCase()
-
-      if (
-        isCustomLocation &&
-        targetLocation.latitude != null &&
-        targetLocation.longitude != null
-      ) {
-        activeLocationName = targetLocation.name
-        activeWeatherData = await fetchWeather(
-          targetLocation.latitude,
-          targetLocation.longitude
-        )
-        activeSnapshot = buildCurrentSnapshot(activeWeatherData)
-      }
-
-      // 4. Generate answer using the appropriate location's weather data
-      const reply = await generateResponse(
-        text,
-        activeWeatherData,
-        activeLocationName,
-        activeSnapshot,
-        LOCATIONS
-      )
+      const reply = chatResult?.answer || "I couldn't process that weather request right now."
 
       const elapsed = Date.now() - startTime
       const remainingDelay = Math.max(0, targetDelay - elapsed)

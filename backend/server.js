@@ -10,6 +10,8 @@ dotenv.config();
 const connectDB = require('./config/db');
 const configurePassport = require('./config/passport');
 const authRoutes = require('./routes/authRoutes');
+const chatRoutes = require('./routes/chatRoutes');
+const { isGeminiConfigured } = require('./services/geminiService');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -43,6 +45,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/chat', chatRoutes);
 
 // 7. Global 404 handler
 app.use((req, res) => {
@@ -64,6 +67,11 @@ app.use((err, req, res, next) => {
 // 9. Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  if (isGeminiConfigured()) {
+    console.log(`Gemini enhancement active (Model: ${process.env.GEMINI_MODEL || 'gemini-3.8-flash'})`);
+  } else {
+    console.log('Gemini enhancement disabled: GEMINI_API_KEY is not configured.');
+  }
 });
 
 module.exports = app;
