@@ -67,4 +67,40 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect, checkDb };
+/**
+ * Optional authentication middleware for routes that work for both guests and authenticated users.
+ * Reads the JWT cookie or Authorization header. If valid, populates req.user.
+ * If missing or invalid, sets req.user = null and continues — does NOT reject the request.
+ *
+ * Use on routes where authentication enriches the response but is not required.
+ */
+const optionalProtect = async (req, res, next) => {
+  try {
+    let token = null;
+
+    if (req.cookies && req.cookies.token) {
+      token = req.cookies.token;
+    } else if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith('Bearer ')
+    ) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+
+    if (!token) {
+      req.user = null;
+      return next();
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select('-password');
+    req.user = user || null;
+    return next();
+  } catch {
+    // Invalid or expired token — treat as guest
+    req.user = null;
+    return next();
+  }
+};
+
+module.exports = { protect, checkDb, optionalProtect };

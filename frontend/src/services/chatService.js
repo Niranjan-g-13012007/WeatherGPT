@@ -113,3 +113,48 @@ export async function sendChatMessage({
     }
   }
 }
+
+/**
+ * Fetch recent chat history for the authenticated user from the backend.
+ *
+ * @param {number} [limit=50] - Max number of messages to retrieve
+ * @returns {Promise<Array<{role: string, content: string, timestamp: string}>>}
+ */
+export async function getChatHistory(limit = 50) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/chat/history?limit=${limit}`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+    if (res.ok) {
+      const data = await res.json()
+      if (data && data.success && Array.isArray(data.messages)) {
+        return data.messages
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load chat history:', err.message)
+  }
+  return []
+}
+
+/**
+ * Clear all chat history for the authenticated user.
+ *
+ * @returns {Promise<boolean>} - true if cleared successfully
+ */
+export async function clearChatHistory() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/chat/history`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return Boolean(data?.success)
+    }
+  } catch (err) {
+    console.warn('Failed to clear chat history:', err.message)
+  }
+  return false
+}

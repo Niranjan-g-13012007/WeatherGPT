@@ -63,6 +63,7 @@ async function generateGeminiResponse({
   weatherContext = null,
   conversationHistory = [],
   isConceptual = false,
+  retryHint = null,
 }) {
   const ai = getGeminiClient()
   if (!ai) {
@@ -90,6 +91,10 @@ async function generateGeminiResponse({
 
   // Build the current turn prompt
   let currentTurnPrompt = ''
+  // Prepend retry hint if this is a verification pass
+  if (retryHint) {
+    currentTurnPrompt += `${retryHint}\n\n`
+  }
   if (weatherContext) {
     currentTurnPrompt += `${weatherContext}\n\n`
   }

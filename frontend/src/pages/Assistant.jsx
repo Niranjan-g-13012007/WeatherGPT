@@ -19,7 +19,7 @@ import { useLocationWeather } from '../context/LocationContext.jsx'
 import { useAlerts } from '../context/AlertContext.jsx'
 import { LOCATIONS } from '../data/locations.js'
 import { fetchWeather, buildCurrentSnapshot } from '../services/weatherService.js'
-import { sendChatMessage } from '../services/chatService.js'
+import { sendChatMessage, getChatHistory, clearChatHistory } from '../services/chatService.js'
 import { detectLocation, resolveTargetLocation, generateResponse } from '../utils/chatbot.js'
 import { evaluateRisk } from '../utils/riskEngine.js'
 import ChatMessage, { TypingIndicator } from '../components/ChatMessage.jsx'
@@ -73,9 +73,11 @@ export default function Assistant() {
   const [activeId, setActiveId] = useState(() => conversations[0]?.id)
   const [isTyping, setIsTyping] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const scrollRef = useRef(null)
   const userScrolledUpRef = useRef(false)
   const isUserSendingRef = useRef(false)
+  const historyLoadedRef = useRef(false)
 
   const active = conversations.find((c) => c.id === activeId) ?? conversations[0]
   const risk = snapshot ? evaluateRisk(snapshot) : null
@@ -96,6 +98,48 @@ export default function Assistant() {
     }
   }, [active?.messages, isTyping])
 
+  // ─── Load MongoDB history for authenticated users ──────────────────────────
+  useEffect(() => {
+    if (!user || historyLoadedRef.current) return
+
+    async function loadHistory() {
+      setHistoryLoading(true)
+      try {
+        const rawMessages = await getChatHistory(50)
+        if (rawMessages.length > 0) {
+          // Convert backend {role:'user'|'assistant'} to frontend {role:'user'|'bot'}
+          const converted = rawMessages.map((m) => ({
+            role: m.role === 'assistant' ? 'bot' : 'user',
+            content: m.content,
+          }))
+
+          // Derive a title from the first user message
+          const firstUser = converted.find((m) => m.role === 'user')
+          const title = firstUser
+            ? firstUser.content.slice(0, 40)
+            : `${location.name} · History`
+
+          const historyConv = {
+            id: `conv-history`,
+            title,
+            messages: converted,
+          }
+
+          setConversations([historyConv, makeConversation(location.name)])
+          setActiveId('conv-history')
+        }
+      } catch (err) {
+        console.warn('Could not load chat history:', err)
+      } finally {
+        setHistoryLoading(false)
+        historyLoadedRef.current = true
+      }
+    }
+
+    loadHistory()
+  }, [user]) // only run once when user is known
+
+  // ─── Conversation updater ───────────────────────────────────────────────────
   function updateActive(updater) {
     setConversations((prev) => prev.map((c) => (c.id === activeId ? updater(c) : c)))
   }
@@ -160,6 +204,15 @@ export default function Assistant() {
     setActiveId(conv.id)
   }
 
+  async function handleClearHistory() {
+    if (!window.confirm('Clear all your chat history? This cannot be undone.')) return
+    await clearChatHistory()
+    historyLoadedRef.current = false
+    const fresh = makeConversation(location.name)
+    setConversations([fresh])
+    setActiveId(fresh.id)
+  }
+
   async function handleLogout() {
     await logout()
     navigate('/login')
@@ -197,15 +250,31 @@ export default function Assistant() {
 
         <div className="assistant-history">
           <span className="assistant-history-label">Recent</span>
-          {conversations.map((c) => (
+          {historyLoading ? (
+            <span style={{ fontSize: '0.78rem', color: 'var(--color-navy-soft, #64748b)', padding: '6px 0', display: 'block' }}>
+              Loading history...
+            </span>
+          ) : (
+            conversations.map((c) => (
+              <button
+                key={c.id}
+                className={`assistant-history-item ${c.id === activeId ? 'active' : ''}`}
+                onClick={() => setActiveId(c.id)}
+              >
+                {c.title || 'New chat'}
+              </button>
+            ))
+          )}
+          {user && !historyLoading && conversations.some((c) => c.id === 'conv-history') && (
             <button
-              key={c.id}
-              className={`assistant-history-item ${c.id === activeId ? 'active' : ''}`}
-              onClick={() => setActiveId(c.id)}
+              className="assistant-history-item"
+              onClick={handleClearHistory}
+              style={{ color: 'var(--color-danger, #ef4444)', marginTop: '4px', fontSize: '0.75rem' }}
+              title="Clear all chat history"
             >
-              {c.title || 'New chat'}
+              🗑 Clear history
             </button>
-          ))}
+          )}
         </div>
 
         {user && (
