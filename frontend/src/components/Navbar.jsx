@@ -6,6 +6,7 @@ import './Navbar.css'
 const LINKS = [
   { to: '/#features', label: 'Features' },
   { to: '/forecast', label: 'Forecast' },
+  { to: '/climate', label: 'Climate' },
   { to: '/about', label: 'How It Works' },
 ]
 

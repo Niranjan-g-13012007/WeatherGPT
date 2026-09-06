@@ -9,6 +9,7 @@ import Login from './pages/Login.jsx'
 import Signup from './pages/Signup.jsx'
 import Assistant from './pages/Assistant.jsx'
 import Forecast from './pages/Forecast.jsx'
+import Climate from './pages/Climate.jsx'
 import About from './pages/About.jsx'
 
 export default function App() {
@@ -59,6 +60,15 @@ export default function App() {
                   <>
                     <Navbar />
                     <Forecast />
+                  </>
+                }
+              />
+              <Route
+                path="/climate"
+                element={
+                  <>
+                    <Navbar />
+                    <Climate />
                   </>
                 }
               />

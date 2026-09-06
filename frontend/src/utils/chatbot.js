@@ -23,6 +23,13 @@
 import { getWeatherCondition, isRainCategory } from './weatherCode.js'
 import { evaluateRisk } from './riskEngine.js'
 import { evaluateForecastAlerts } from './alertEngine.js'
+import {
+  fetchHistoricalWeather,
+  aggregateYearlyData,
+  aggregateMonthlyData,
+  calculateLinearTrend,
+  generateClimateNarrative,
+} from '../services/historicalWeatherService.js'
 import { LOCATIONS } from '../data/locations.js'
 import {
   fetchWeather,
@@ -159,6 +166,20 @@ export function isModelInquiry(query) {
  * Detect specific weather variable intent (rain, temperature, etc.).
  */
 /**
+ * Check if the query asks about climate trends or historical weather data.
+ */
+export function isClimateHistoryQuery(query) {
+  if (!query || typeof query !== 'string') return false
+  const q = query.toLowerCase().trim()
+
+  return (
+    /\b(climate|historical|history|trend|trends|past\s+\d+|last\s+\d+\s+years?|over\s+the\s+last|in\s+20\d\d|during\s+20\d\d|for\s+20\d\d|\b20\d\d\b|become\s+hotter|getting\s+hotter|become\s+warmer|getting\s+warmer|rainfall\s+increased|rainfall\s+decreased|increased\s+or\s+decreased|weather\s+changed|climate\s+changed|changed\s+in|has.*changed)\b/i.test(q) ||
+    (/\b(average|typical|normal|usual)\b/i.test(q) && /(temperature|temp|rainfall|rain|weather)?.*(?:in|during)\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|may|june|july|august|september|october|november|december)/i.test(q)) ||
+    (/\b(compare|versus|vs)\b/i.test(q) && /(temperature|rainfall|weather|climate|historically)/i.test(q))
+  )
+}
+
+/**
  * Detect all weather intents present in the user question (for multi-intent handling).
  */
 export function detectAllIntents(query) {
@@ -225,6 +246,11 @@ export function detectAllIntents(query) {
     intents.push('risk')
   }
 
+  // Climate trend / Historical weather
+  if (isClimateHistoryQuery(q)) {
+    intents.push('climate_history')
+  }
+
   // General summary
   if (
     /summary|overview|weather today|weather tomorrow|how.*weather|weather like|what.*weather/.test(q) &&
@@ -243,6 +269,12 @@ export function detectAllIntents(query) {
 export function detectWeatherIntent(query) {
   if (!query || typeof query !== 'string') return null
   const q = query.toLowerCase().trim()
+
+  // 0. Climate Trend & Historical Weather (prioritize unless explicit current/forecast request)
+  const hasForecastRequest = /today|tomorrow|tonight|forecast|current|right now/i.test(q)
+  if (isClimateHistoryQuery(query) && !hasForecastRequest) {
+    return 'climate_history'
+  }
 
   // 1. Agriculture / irrigation
   if (/irrigate|irrigation|crop|crops|farming|farm|plants|water.*plant|agriculture|fertiliz|spray|sow|harvest/.test(q)) {
@@ -299,7 +331,12 @@ export function detectWeatherIntent(query) {
     return 'risk'
   }
 
-  // 12. General summary
+  // 12. Climate trend fallback
+  if (isClimateHistoryQuery(query)) {
+    return 'climate_history'
+  }
+
+  // 13. General summary
   if (
     /summary|overview|weather today|weather tomorrow|how.*weather|weather like|what.*weather/.test(q) &&
     !isModelInquiry(q)
@@ -490,14 +527,31 @@ export function parseWeatherQuery(
     ) {
       return false
     }
+    // If climate_history is present and query does NOT explicitly ask for tomorrow/today/forecast,
+    // don't treat bare 'temperature' or 'rain' as separate current-day intents:
+    const hasForecastRequest = /today|tomorrow|tonight|forecast|current|right now/i.test(query)
+    if (allIntents.includes('climate_history') && !hasForecastRequest) {
+      if (intent === 'temperature' || intent === 'rain') return false
+    }
     return true
   })
 
   // Multi-intent triggers when 2 or more distinct actionable intents are present
   const isMultiIntent = distinctIntents.length >= 2
 
+  let primaryIntent = weatherIntent
+  if (!primaryIntent && distinctIntents.includes('climate_history') && !isMultiIntent) {
+    primaryIntent = 'climate_history'
+  }
+  if (!primaryIntent && hasModel) {
+    primaryIntent = 'nwp_model'
+  }
+  if (!primaryIntent) {
+    primaryIntent = distinctIntents[0] || 'weather'
+  }
+
   return {
-    intent: weatherIntent || (hasModel ? 'nwp_model' : 'weather'),
+    intent: primaryIntent,
     weatherIntent,
     allIntents: distinctIntents,
     hasModelQuery: hasModel,
@@ -1313,6 +1367,196 @@ function generateWeekendResponse(
 
 
 // ============================================================
+// HISTORICAL CLIMATE RESPONSE GENERATOR
+// ============================================================
+
+export async function generateHistoricalResponse(
+  query,
+  locationName,
+  locations = LOCATIONS
+) {
+  const q = query.toLowerCase()
+
+  // 1. Detect locations (primary and secondary for comparisons)
+  let locA = locations.find((l) => l.name.toLowerCase() === (locationName || '').toLowerCase()) || { name: locationName || 'Chennai' }
+  let locB = null
+
+  // Check comparison patterns like "Compare Chennai and Coimbatore" or "Compare Chennai and Ooty"
+  const cleanQ = query.replace(/[?.,!]/g, '').trim()
+  const compareMatch = cleanQ.match(/compare\s+([A-Za-z\s]+?)\s+(?:and|with|to|vs|versus)\s+([A-Za-z\s]+?)(?:\s+(?:temperature|rainfall|rain|temp|weather|climate|historically|over|in)|$)/i)
+  if (compareMatch && compareMatch[1] && compareMatch[2]) {
+    const nameA = compareMatch[1].trim()
+    const nameB = compareMatch[2].trim()
+    const foundA = locations.find((l) => l.name.toLowerCase() === nameA.toLowerCase())
+    const foundB = locations.find((l) => l.name.toLowerCase() === nameB.toLowerCase())
+    if (foundA) locA = foundA
+    else {
+      try {
+        const searchA = await searchLocations(nameA, 1)
+        if (searchA && searchA.length > 0) locA = searchA[0]
+      } catch (_) {}
+    }
+
+    if (foundB) locB = foundB
+    else {
+      try {
+        const searchB = await searchLocations(nameB, 1)
+        if (searchB && searchB.length > 0) locB = searchB[0]
+      } catch (_) {}
+    }
+  } else {
+    const detected = await resolveTargetLocation(query, locA, locations)
+    if (detected) locA = detected
+  }
+
+  // Ensure coordinates exist for locA
+  if (locA.latitude == null || locA.longitude == null) {
+    const found = locations.find((l) => l.name.toLowerCase() === (locA.name || '').toLowerCase())
+    if (found) {
+      locA = found
+    } else {
+      locA = locations[0] || { name: 'Chennai', latitude: 13.0827, longitude: 80.2707 }
+    }
+  }
+
+  // 2. Determine metric
+  let metricKey = 'avgTemp'
+  let metricUnit = '°C'
+  let metricLabel = 'Average Temperature'
+  if (/rain|rainfall|precipitation/.test(q)) {
+    metricKey = 'totalRainfall'
+    metricUnit = 'mm'
+    metricLabel = 'Annual Rainfall'
+  } else if (/wind/.test(q)) {
+    metricKey = 'avgWindSpeed'
+    metricUnit = 'km/h'
+    metricLabel = 'Wind Speed'
+  } else if (/humid/.test(q)) {
+    metricKey = 'avgHumidity'
+    metricUnit = '%'
+    metricLabel = 'Relative Humidity'
+  }
+
+  // 3. Determine period scope
+  const singleYearMatch = query.match(/\b(?:in|during|for)\s+(20\d\d)\b/i) || query.match(/\b(20\d\d)\b/)
+  const specificYear = singleYearMatch ? Number(singleYearMatch[1] || singleYearMatch[0]) : null
+
+  const monthMatch = query.match(/\b(?:in|during|for)\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i) || query.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i)
+
+  let startYear = 2015
+  const endYear = 2024
+  if (/last\s+5\s+years?|past\s+5\s+years?/i.test(q)) {
+    startYear = 2020
+  } else if (/last\s+20\s+years?|past\s+20\s+years?/i.test(q)) {
+    startYear = 2005
+  }
+  const startDate = `${startYear}-01-01`
+  const endDate = `${endYear}-12-31`
+
+  try {
+    const historicalResA = await fetchHistoricalWeather(locA.latitude, locA.longitude, startDate, endDate)
+    const yearlyA = aggregateYearlyData(historicalResA.daily)
+    const monthlyA = aggregateMonthlyData(historicalResA.daily)
+    const trendA = calculateLinearTrend(yearlyA, metricKey)
+
+    // CASE 1: Single Year Query
+    if (specificYear && specificYear >= startYear && specificYear <= endYear) {
+      const yearRecord = yearlyA.find((y) => y.year === specificYear)
+      if (yearRecord) {
+        if (metricKey === 'totalRainfall') {
+          return (
+            `In ${specificYear}, ${locA.name} recorded **${yearRecord.totalRainfall} mm** of total annual rainfall.\n\n` +
+            `• 10-year baseline average (${startYear}–${endYear}): ${trendA.historicalAvg} mm\n` +
+            `• Average temperature in ${specificYear}: ${yearRecord.avgTemp}°C\n\n` +
+            `Source: Open-Meteo Historical Archive (ECMWF ERA5 Reanalysis).`
+          )
+        } else {
+          return (
+            `In ${specificYear}, ${locA.name}'s average temperature was **${yearRecord.avgTemp}°C** ` +
+            `(daytime high: ${yearRecord.avgMaxTemp}°C, nighttime low: ${yearRecord.avgMinTemp}°C).\n\n` +
+            `• Peak high: ${yearRecord.highestTemp}°C; lowest: ${yearRecord.lowestTemp}°C\n` +
+            `• Total annual rainfall: ${yearRecord.totalRainfall} mm\n\n` +
+            `Source: Open-Meteo Historical Archive (ECMWF ERA5 Reanalysis).`
+          )
+        }
+      }
+    }
+
+    // CASE 2: Monthly / Seasonal Query
+    if (monthMatch && monthMatch[1]) {
+      const mQueryStr = monthMatch[1].toLowerCase().slice(0, 3)
+      const monthRecord = monthlyA.find((m) => m.month.toLowerCase() === mQueryStr)
+      if (monthRecord) {
+        return (
+          `Historical Climate Analysis for ${locA.name} during **${monthRecord.month}** (${startYear}–${endYear} baseline):\n\n` +
+          `• **Average temperature**: ${monthRecord.avgTemp}°C\n` +
+          `• **Average rainfall**: ${monthRecord.avgRainfall} mm\n` +
+          `• **Average relative humidity**: ${monthRecord.avgHumidity}%\n` +
+          `• **Average wind speed**: ${monthRecord.avgWindSpeed} km/h\n` +
+          `• **Typical conditions**: ${monthRecord.avgTemp >= 30 ? 'Hot and humid' : monthRecord.avgTemp >= 24 ? 'Warm and mild' : 'Comfortable and pleasant'}\n\n` +
+          `Source: Open-Meteo Historical Archive (ECMWF ERA5 Reanalysis).`
+        )
+      }
+    }
+
+    // CASE 3: Location Comparison
+    if (locB && locB.latitude && locB.longitude) {
+      const historicalResB = await fetchHistoricalWeather(locB.latitude, locB.longitude, startDate, endDate)
+      const yearlyB = aggregateYearlyData(historicalResB.daily)
+      const trendB = calculateLinearTrend(yearlyB, metricKey)
+
+      const diff = Number((trendA.historicalAvg - trendB.historicalAvg).toFixed(2))
+      const absDiff = Math.abs(diff)
+
+      let compNarrative = ''
+      if (metricKey === 'avgTemp') {
+        compNarrative = diff > 0
+          ? `${locA.name} remained consistently warmer than ${locB.name} by ~${absDiff}°C on average over the ${startYear}–${endYear} period.`
+          : `${locB.name} historically experienced warmer temperatures than ${locA.name} by ~${absDiff}°C on average.`
+      } else {
+        compNarrative = diff > 0
+          ? `${locA.name} received significantly more annual precipitation than ${locB.name} (+${absDiff} mm difference on average).`
+          : `${locB.name} received more rainfall on average than ${locA.name} (${absDiff} mm higher average).`
+      }
+
+      const recentYears = yearlyA.slice(-5)
+      const tableRows = recentYears.map((yA) => {
+        const yB = yearlyB.find((b) => b.year === yA.year)
+        return `• **${yA.year}**: ${locA.name} ${yA[metricKey]} ${metricUnit} vs ${locB.name} ${yB ? yB[metricKey] : 'N/A'} ${metricUnit}`
+      }).join('\n')
+
+      return (
+        `Historical Climate Comparison: **${locA.name} vs ${locB.name}** (${startYear}–${endYear})\n\n` +
+        `• **${locA.name} Historical Average**: ${trendA.historicalAvg} ${metricUnit}\n` +
+        `• **${locB.name} Historical Average**: ${trendB.historicalAvg} ${metricUnit}\n\n` +
+        `Recent 5-Year History:\n${tableRows}\n\n` +
+        `Insight:\n${compNarrative}\n\n` +
+        `Source: Open-Meteo Historical Archive (ECMWF ERA5 Reanalysis). View full interactive charts at /climate.`
+      )
+    }
+
+    // CASE 4: Multi-Year Climate Trend
+    const narrative = generateClimateNarrative(yearlyA, trendA, metricKey, locA.name)
+    const recentYears = yearlyA.slice(-5)
+    const tableRows = recentYears.map((y) => `• **${y.year}**: ${y[metricKey]} ${metricUnit}`).join('\n')
+
+    return (
+      `Climate Trend Analysis for **${locA.name}** (${startYear}–${endYear}):\n\n` +
+      `• **Trend Direction**: ${trendA.directionIcon} ${trendA.direction} (${trendA.slope > 0 ? '+' : ''}${trendA.slope} ${metricUnit}/year)\n` +
+      `• **Historical Baseline (${startYear}–${endYear})**: ${trendA.historicalAvg} ${metricUnit}\n` +
+      `• **Recent Average (Past 3 Years)**: ${trendA.recentAvg} ${metricUnit} (${trendA.difference > 0 ? '+' : ''}${trendA.difference} ${metricUnit})\n\n` +
+      `Recent Year-Wise Progression:\n${tableRows}\n\n` +
+      `Summary:\n${narrative}\n\n` +
+      `Source: Open-Meteo Historical Archive (ECMWF ERA5 Reanalysis). Explore interactive charts at /climate.`
+    )
+  } catch (err) {
+    console.error('Error generating historical response:', err)
+    return `Historical weather observations for ${locA.name} could not be retrieved at this time. Please check your connection or explore /climate.`
+  }
+}
+
+
+// ============================================================
 // NWP FORECAST MODEL RESPONSE
 // ============================================================
 
@@ -1396,6 +1640,13 @@ export async function generateResponse(
     locationName &&
     detectedLocation.name.toLowerCase() !== locationName.toLowerCase()
 
+  if (!detectedLocation?.latitude) {
+    const locMatch = locations.find((l) => l.name.toLowerCase() === (resolvedLocationName || '').toLowerCase())
+    if (locMatch && locMatch.latitude != null) {
+      detectedLocation = locMatch
+    }
+  }
+
   if (
     (isDifferentLocation || !activeWeatherData) &&
     detectedLocation?.latitude != null &&
@@ -1409,12 +1660,20 @@ export async function generateResponse(
       activeSnapshot = buildCurrentSnapshot(activeWeatherData)
     } catch (err) {
       console.error(`Failed to fetch weather for ${resolvedLocationName}:`, err)
-      return `I couldn't fetch live weather data for ${resolvedLocationName} right now. Please check your connection and try again.`
     }
   }
 
   if (intent === 'nwp_model' && !activeWeatherData) {
     return generateModelResponse(query, null, resolvedLocationName)
+  }
+
+  // If query is solely for climate/historical data, we do not require activeWeatherData (forecast)
+  if (intent === 'climate_history' || (!parsed.isMultiIntent && parsed.allIntents.includes('climate_history'))) {
+    return await generateHistoricalResponse(
+      query,
+      resolvedLocationName,
+      locations
+    )
   }
 
   if (!activeWeatherData) {
@@ -1432,6 +1691,23 @@ export async function generateResponse(
   // ----------------------------------------------------
   if (parsed.isMultiIntent && parsed.allIntents.length >= 2) {
     const sections = []
+
+    // 0. General Summary / Forecast (if requested alongside climate or another intent)
+    if (
+      (parsed.allIntents.includes('summary') || /tomorrow|today|forecast/i.test(query)) &&
+      !parsed.allIntents.includes('rain') &&
+      !parsed.allIntents.includes('temperature')
+    ) {
+      if (activeWeatherData) {
+        sections.push(
+          generateWeatherResponse(
+            resolvedLocationName,
+            activeWeatherData,
+            parsed.time
+          )
+        )
+      }
+    }
 
     // 1. Rain
     if (parsed.allIntents.includes('rain')) {
@@ -1527,7 +1803,17 @@ export async function generateResponse(
       )
     }
 
-    // 8. NWP model
+    // 8. Climate & Historical Analysis
+    if (parsed.allIntents.includes('climate_history')) {
+      const histResp = await generateHistoricalResponse(
+        query,
+        resolvedLocationName,
+        locations
+      )
+      sections.push(histResp)
+    }
+
+    // 9. NWP model
     if (
       parsed.allIntents.includes('nwp_model') ||
       parsed.hasModelQuery ||
@@ -1671,6 +1957,17 @@ export async function generateResponse(
         activeWeatherData,
         parsed.time,
         query
+      )
+      break
+
+    // -------------------------------
+    // Climate & History
+    // -------------------------------
+    case 'climate_history':
+      reply = await generateHistoricalResponse(
+        query,
+        resolvedLocationName,
+        locations
       )
       break
 

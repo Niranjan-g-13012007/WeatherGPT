@@ -12,6 +12,7 @@ import {
   AlertCircle,
   LogOut,
   Bell,
+  TrendingUp,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useLocationWeather } from '../context/LocationContext.jsx'
@@ -205,6 +206,16 @@ export default function Assistant() {
           {unreadCount > 0 && (
             <span className="assistant-notif-badge">{unreadCount}</span>
           )}
+        </button>
+
+        <button
+          className="assistant-notifications-btn"
+          onClick={() => navigate('/climate')}
+          title="Climate & Historical Analysis"
+        >
+          <span className="assistant-notif-left">
+            <TrendingUp size={16} strokeWidth={2.1} /> Climate Trends
+          </span>
         </button>
 
         <div className="assistant-history">
