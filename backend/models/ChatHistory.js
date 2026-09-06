@@ -20,6 +20,11 @@ const messageSchema = new mongoose.Schema(
       required: true,
       maxlength: 8000,
     },
+    language: {
+      type: String,
+      default: 'en',
+      enum: ['en', 'hi', 'ta', 'te', 'kn', 'ml', 'mr', 'bn', 'gu', 'pa', 'or'],
+    },
     timestamp: {
       type: Date,
       default: Date.now,

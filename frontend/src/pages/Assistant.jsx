@@ -15,6 +15,7 @@ import {
   TrendingUp,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
+import { useLanguage } from '../context/LanguageContext.jsx'
 import { useLocationWeather } from '../context/LocationContext.jsx'
 import { useAlerts } from '../context/AlertContext.jsx'
 import { LOCATIONS } from '../data/locations.js'
@@ -26,6 +27,7 @@ import ChatMessage, { TypingIndicator } from '../components/ChatMessage.jsx'
 import ChatInput from '../components/ChatInput.jsx'
 import WeatherCard from '../components/WeatherCard.jsx'
 import LocationPicker from '../components/LocationPicker.jsx'
+import LanguageSelector from '../components/LanguageSelector.jsx'
 import { LoadingState, ErrorState } from '../components/DataState.jsx'
 import NotificationDrawer from '../components/NotificationDrawer.jsx'
 import AlertDetailModal from '../components/AlertDetailModal.jsx'
@@ -53,6 +55,7 @@ function makeConversation(locationName) {
 export default function Assistant() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const { language, t } = useLanguage()
   const { openPanel, unreadCount } = useAlerts()
   const {
     location,
@@ -81,6 +84,7 @@ export default function Assistant() {
 
   const active = conversations.find((c) => c.id === activeId) ?? conversations[0]
   const risk = snapshot ? evaluateRisk(snapshot) : null
+  const suggestions = t('suggestions') || SUGGESTIONS
 
   function handleChatScroll() {
     const el = scrollRef.current
@@ -165,6 +169,7 @@ export default function Assistant() {
         conversationHistory: recentHistory,
         weatherData,
         snapshot,
+        preferredLanguage: language,
       })
 
       const reply = chatResult?.answer || "I couldn't process that weather request right now."
@@ -189,6 +194,7 @@ export default function Assistant() {
             {
               role: 'bot',
               content:
+                t('offlineError') ||
                 "I couldn't fetch live weather data for that location right now. Please check your connection and try again.",
             },
           ],
@@ -205,7 +211,7 @@ export default function Assistant() {
   }
 
   async function handleClearHistory() {
-    if (!window.confirm('Clear all your chat history? This cannot be undone.')) return
+    if (!window.confirm(t('clearHistoryConfirm') || 'Clear all your chat history? This cannot be undone.')) return
     await clearChatHistory()
     historyLoadedRef.current = false
     const fresh = makeConversation(location.name)
@@ -222,16 +228,16 @@ export default function Assistant() {
     <div className="assistant">
       <aside className="assistant-sidebar">
         <button className="assistant-back" onClick={() => navigate('/')}>
-          <ArrowLeft size={15} strokeWidth={2.2} /> Home
+          <ArrowLeft size={15} strokeWidth={2.2} /> {t('home')}
         </button>
 
         <button className="assistant-new-chat" onClick={handleNewChat}>
-          <MessageSquarePlus size={16} strokeWidth={2.1} /> New chat
+          <MessageSquarePlus size={16} strokeWidth={2.1} /> {t('newChat')}
         </button>
 
         <button className="assistant-notifications-btn" onClick={openPanel}>
           <span className="assistant-notif-left">
-            <Bell size={16} strokeWidth={2.1} /> Notifications
+            <Bell size={16} strokeWidth={2.1} /> {t('notifications')}
           </span>
           {unreadCount > 0 && (
             <span className="assistant-notif-badge">{unreadCount}</span>
@@ -241,18 +247,18 @@ export default function Assistant() {
         <button
           className="assistant-notifications-btn"
           onClick={() => navigate('/climate')}
-          title="Climate & Historical Analysis"
+          title={t('climateTrends')}
         >
           <span className="assistant-notif-left">
-            <TrendingUp size={16} strokeWidth={2.1} /> Climate Trends
+            <TrendingUp size={16} strokeWidth={2.1} /> {t('climateTrends')}
           </span>
         </button>
 
         <div className="assistant-history">
-          <span className="assistant-history-label">Recent</span>
+          <span className="assistant-history-label">{t('recent')}</span>
           {historyLoading ? (
             <span style={{ fontSize: '0.78rem', color: 'var(--color-navy-soft, #64748b)', padding: '6px 0', display: 'block' }}>
-              Loading history...
+              {t('loadingHistory')}
             </span>
           ) : (
             conversations.map((c) => (
@@ -261,7 +267,7 @@ export default function Assistant() {
                 className={`assistant-history-item ${c.id === activeId ? 'active' : ''}`}
                 onClick={() => setActiveId(c.id)}
               >
-                {c.title || 'New chat'}
+                {c.title || t('newChat')}
               </button>
             ))
           )}
@@ -270,9 +276,9 @@ export default function Assistant() {
               className="assistant-history-item"
               onClick={handleClearHistory}
               style={{ color: 'var(--color-danger, #ef4444)', marginTop: '4px', fontSize: '0.75rem' }}
-              title="Clear all chat history"
+              title={t('clearHistory')}
             >
-              🗑 Clear history
+              🗑 {t('clearHistory')}
             </button>
           )}
         </div>
@@ -348,7 +354,7 @@ export default function Assistant() {
                 alignItems: 'center',
                 borderRadius: '4px',
               }}
-              title="Log out"
+              title={t('logOut')}
             >
               <LogOut size={16} />
             </button>
@@ -364,11 +370,12 @@ export default function Assistant() {
             </div>
             <div>
               <h1>WeatherGPT</h1>
-              <p>AI Weather Intelligence</p>
+              <p>{t('appSubtitle')}</p>
             </div>
           </div>
 
           <div className="assistant-header-actions">
+            <LanguageSelector />
             <LocationPicker location={location} onChange={setLocation} />
             <button className="assistant-context-toggle" onClick={() => setContextOpen(true)}>
               <PanelRightOpen size={18} strokeWidth={2} />
@@ -381,7 +388,7 @@ export default function Assistant() {
         {isDetectingLocation && (
           <div className="assistant-location-banner info">
             <Navigation size={13} className="banner-spinner" />
-            <span>Detecting your location...</span>
+            <span>{t('detectingLocation')}</span>
           </div>
         )}
 
@@ -400,11 +407,11 @@ export default function Assistant() {
               <div className="assistant-empty-icon">
                 <Sparkles size={22} strokeWidth={1.8} />
               </div>
-              <h2>How can I help you understand the weather?</h2>
-              <p>Ask me about rain, temperature, travel, outdoor activities, weather risks and more.</p>
+              <h2>{t('emptyHeading')}</h2>
+              <p>{t('emptySubheading')}</p>
 
               <div className="assistant-suggestions">
-                {SUGGESTIONS.map((s) => (
+                {suggestions.map((s) => (
                   <button key={s} onClick={() => handleSend(s)}>
                     {s}
                   </button>
@@ -426,16 +433,21 @@ export default function Assistant() {
         <div className="assistant-input-area">
           {status === 'error' && (
             <p className="assistant-inline-warning">
-              Live weather data isn't loading right now — answers may be limited.{' '}
-              <button onClick={retry}>Retry</button>
+              {t('liveDataWarning')}{' '}
+              <button onClick={retry}>{t('retry')}</button>
             </p>
           )}
-          <ChatInput onSend={handleSend} disabled={isTyping} />
+          <ChatInput
+            onSend={handleSend}
+            disabled={isTyping}
+            placeholder={t('inputPlaceholder')}
+            language={language}
+          />
         </div>
       </main>
 
       <aside className="assistant-context">
-        <p className="assistant-context-label">Current weather</p>
+        <p className="assistant-context-label">{t('currentWeather')}</p>
         {status === 'loading' && <LoadingState />}
         {status === 'error' && <ErrorState onRetry={retry} />}
         {status === 'success' && (

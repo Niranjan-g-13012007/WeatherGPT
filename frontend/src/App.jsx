@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext.jsx'
+import { LanguageProvider } from './context/LanguageContext.jsx'
 import { LocationProvider } from './context/LocationContext.jsx'
 import { AlertProvider } from './context/AlertContext.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
@@ -15,9 +16,10 @@ import About from './pages/About.jsx'
 export default function App() {
   return (
     <AuthProvider>
-      <LocationProvider>
-        <AlertProvider>
-          <BrowserRouter>
+      <LanguageProvider>
+        <LocationProvider>
+          <AlertProvider>
+            <BrowserRouter>
             <Routes>
               <Route
                 path="/"
@@ -85,6 +87,7 @@ export default function App() {
           </BrowserRouter>
         </AlertProvider>
       </LocationProvider>
-    </AuthProvider>
-  )
+    </LanguageProvider>
+  </AuthProvider>
+)
 }

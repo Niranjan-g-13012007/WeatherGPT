@@ -8,12 +8,13 @@
 // - GEMINI_API_KEY is read strictly from process.env and never logged or exposed.
 
 const { GoogleGenAI } = require('@google/genai')
+const { getLanguageName } = require('../utils/languageDetector')
 
-const SYSTEM_INSTRUCTION = `You are the conversational intelligence layer of WeatherGPT.
+const BASE_SYSTEM_INSTRUCTION = `You are the conversational intelligence layer of WeatherGPT — an intelligent weather assistant for India.
 
 Weather data supplied in the context comes from trusted application services such as Open-Meteo and must be treated as authoritative for weather facts.
 
-Rules:
+Core Rules:
 1. Never invent or modify supplied weather values.
 2. Never fabricate forecasts, rainfall amounts, temperatures, alerts, historical values, or NWP models.
 3. Use the supplied data to explain weather information clearly, naturally, and intelligently.
@@ -22,9 +23,26 @@ Rules:
 6. You are allowed to answer general educational questions about weather, meteorology, atmosphere, climate, and forecasting models.
 7. Keep responses concise, useful, conversational, and easy to understand.
 8. Never claim that WeatherGPT itself runs ECMWF or another NWP model unless explicitly stated by the supplied context. The forecast data is retrieved via Open-Meteo.
-9. Distinguish forecast-derived WeatherGPT analysis from official government (e.g. IMD) warnings. If source is "WeatherGPT Forecast Alert", frame it as "WeatherGPT forecast analysis indicates...". Only say an official warning has been issued if the context explicitly designates it as official.
-10. If the user asks a multi-intent question (e.g., "Will it rain tomorrow in Chennai, should I travel, and which weather model is being used?"), answer ALL requested parts coherently in a single response without omitting any aspect.
-11. Stay strictly within the weather, climate, meteorology, forecasting, alerts, and related domains.`
+9. Distinguish forecast-derived WeatherGPT analysis from official government (e.g. IMD) warnings.
+10. If the user asks a multi-intent question, answer ALL requested parts coherently in a single response.
+11. Stay strictly within the weather, climate, meteorology, forecasting, alerts, and related domains.
+
+Multilingual Rules:
+12. ALWAYS respond in the language specified in the RESPONSE LANGUAGE instruction below. Do not switch languages mid-response.
+13. You may understand queries in any language including mixed-language (e.g. "Chennai la rain varuma?", "Chennai mein baarish hogi?").
+14. When responding in a non-English language, use natural, conversational expressions — not literal word-for-word translations.
+15. Weather values (numbers, units) remain in standard notation (e.g. 32°C, 78%, 60mm) regardless of response language.
+16. Greetings in regional languages should be acknowledged warmly and naturally in the same language.`
+
+/**
+ * Build a system instruction with the language requirement injected.
+ */
+function buildSystemInstruction(responseLanguage = 'en') {
+  const langName = getLanguageName(responseLanguage)
+  return `${BASE_SYSTEM_INSTRUCTION}
+
+RESPONSE LANGUAGE: Respond ONLY in ${langName}. This is mandatory. All your output must be in ${langName}.`
+}
 
 let clientInstance = null
 
@@ -49,13 +67,16 @@ function isGeminiConfigured() {
 
 /**
  * Generate natural, intelligent response from Gemini given the user question,
- * structured weather context, and recent conversation history.
+ * structured weather context, conversation history, and language parameters.
  *
  * @param {object} params
  * @param {string} params.query - User question
  * @param {string} [params.weatherContext] - Compact structured Open-Meteo context
  * @param {Array} [params.conversationHistory] - Recent turns [{ role, content }]
  * @param {boolean} [params.isConceptual] - True if educational / meteorological definition
+ * @param {string} [params.responseLanguage] - Language code for the response (e.g. 'ta', 'hi')
+ * @param {string} [params.detectedLanguage] - Language detected from the user's message
+ * @param {string|null} [params.retryHint] - Extra instruction for verification re-pass
  * @returns {Promise<string|null>} - Generated text or null if failed / unavailable
  */
 async function generateGeminiResponse({
@@ -63,14 +84,14 @@ async function generateGeminiResponse({
   weatherContext = null,
   conversationHistory = [],
   isConceptual = false,
+  responseLanguage = 'en',
+  detectedLanguage = 'en',
   retryHint = null,
 }) {
   const ai = getGeminiClient()
   if (!ai) {
     return null
   }
-
-  const modelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
 
   // Build the message contents
   const contents = []
@@ -91,13 +112,22 @@ async function generateGeminiResponse({
 
   // Build the current turn prompt
   let currentTurnPrompt = ''
+
   // Prepend retry hint if this is a verification pass
   if (retryHint) {
     currentTurnPrompt += `${retryHint}\n\n`
   }
+
+  // Language directive injected into the user prompt as well (reinforces system instruction)
+  const langName = getLanguageName(responseLanguage)
+  if (responseLanguage !== 'en') {
+    currentTurnPrompt += `[LANGUAGE INSTRUCTION: Respond in ${langName} only]\n\n`
+  }
+
   if (weatherContext) {
     currentTurnPrompt += `${weatherContext}\n\n`
   }
+
   currentTurnPrompt += `USER QUESTION: ${query}`
 
   contents.push({
@@ -105,13 +135,19 @@ async function generateGeminiResponse({
     parts: [{ text: currentTurnPrompt }],
   })
 
-  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash'
   const modelCandidates = [
     primaryModel,
-    'gemini-3.8-flash',
+    'gemini-3.6-flash',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
     'gemini-3.5-flash',
-    'gemini-3-flash-preview',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
   ].filter((m, idx, arr) => arr.indexOf(m) === idx)
+
+  // Build system instruction with language requirement
+  const systemInstruction = buildSystemInstruction(responseLanguage)
 
   for (const model of modelCandidates) {
     try {
@@ -119,7 +155,7 @@ async function generateGeminiResponse({
         model,
         contents,
         config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
+          systemInstruction,
           temperature: 0.2, // Low temperature for high factual adherence to supplied context
         },
       })
@@ -147,5 +183,5 @@ async function generateGeminiResponse({
 module.exports = {
   isGeminiConfigured,
   generateGeminiResponse,
-  SYSTEM_INSTRUCTION,
+  BASE_SYSTEM_INSTRUCTION,
 }

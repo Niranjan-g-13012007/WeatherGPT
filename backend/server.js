@@ -11,6 +11,7 @@ const connectDB = require('./config/db');
 const configurePassport = require('./config/passport');
 const authRoutes = require('./routes/authRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const userRoutes = require('./routes/userRoutes');
 const { isGeminiConfigured } = require('./services/geminiService');
 
 const app = express();
@@ -46,6 +47,7 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/user', userRoutes);
 
 // 7. Global 404 handler
 app.use((req, res) => {

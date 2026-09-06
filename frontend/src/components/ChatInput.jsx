@@ -5,7 +5,26 @@ import './ChatInput.css'
 const SpeechRecognitionAPI =
   typeof window !== 'undefined' ? window.SpeechRecognition || window.webkitSpeechRecognition : null
 
-export default function ChatInput({ onSend, disabled }) {
+const BROWSER_LANG_MAP = {
+  en: 'en-IN',
+  hi: 'hi-IN',
+  ta: 'ta-IN',
+  te: 'te-IN',
+  kn: 'kn-IN',
+  ml: 'ml-IN',
+  mr: 'mr-IN',
+  bn: 'bn-IN',
+  gu: 'gu-IN',
+  pa: 'pa-IN',
+  or: 'or-IN',
+}
+
+export default function ChatInput({
+  onSend,
+  disabled,
+  placeholder = 'Ask WeatherGPT anything about the weather...',
+  language = 'en',
+}) {
   const [value, setValue] = useState('')
   const [listening, setListening] = useState(false)
   const [voiceMessage, setVoiceMessage] = useState('')
@@ -16,7 +35,7 @@ export default function ChatInput({ onSend, disabled }) {
     const recognition = new SpeechRecognitionAPI()
     recognition.continuous = false
     recognition.interimResults = false
-    recognition.lang = 'en-IN'
+    recognition.lang = BROWSER_LANG_MAP[language] || 'en-IN'
 
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript
@@ -72,7 +91,7 @@ export default function ChatInput({ onSend, disabled }) {
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="Ask WeatherGPT anything about the weather..."
+          placeholder={placeholder}
           disabled={disabled}
         />
 

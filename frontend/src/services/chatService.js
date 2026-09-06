@@ -21,6 +21,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
  * @param {Array} params.conversationHistory - Recent messages
  * @param {object} [params.weatherData] - Client cached weather data
  * @param {object} [params.snapshot] - Client cached snapshot
+ * @param {string} [params.preferredLanguage] - User's preferred language code
  * @returns {Promise<{ answer: string, enhancedByGemini: boolean, source?: string, nwpModel?: string }>}
  */
 export async function sendChatMessage({
@@ -29,6 +30,7 @@ export async function sendChatMessage({
   conversationHistory = [],
   weatherData = null,
   snapshot = null,
+  preferredLanguage = null,
 }) {
   try {
     const res = await fetch(`${API_BASE_URL}/api/chat`, {
@@ -45,6 +47,7 @@ export async function sendChatMessage({
           longitude: location?.longitude,
         },
         conversationHistory,
+        preferredLanguage,
       }),
     })
 
@@ -157,4 +160,51 @@ export async function clearChatHistory() {
     console.warn('Failed to clear chat history:', err.message)
   }
   return false
+}
+
+/**
+ * Update the user's preferred language on the backend.
+ *
+ * @param {string} language - 2-letter language code (e.g. 'hi', 'ta', 'en')
+ * @returns {Promise<boolean>}
+ */
+export async function updatePreferredLanguage(language) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/user/preferences/language`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ language }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return Boolean(data?.success)
+    }
+  } catch (err) {
+    console.warn('Failed to update user language preference:', err.message)
+  }
+  return false
+}
+
+/**
+ * Get user preferences from the backend.
+ *
+ * @returns {Promise<{ preferredLanguage?: string }|null>}
+ */
+export async function getUserPreferences() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/user/preferences`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return data?.preferences || null
+    }
+  } catch (err) {
+    console.warn('Failed to fetch user preferences:', err.message)
+  }
+  return null
 }
