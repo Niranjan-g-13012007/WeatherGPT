@@ -117,8 +117,25 @@ function evaluateRisk(snapshot) {
 // ----------------------------------------------------
 function extractPeriodMetrics(weatherData, snapshot, period = 'tomorrow') {
   const daily = weatherData?.daily
-  const isTomorrow = period === 'tomorrow'
-  const dayIdx = isTomorrow ? 1 : 0
+  let dayIdx = 1
+  let periodName = 'tomorrow'
+
+  if (typeof period === 'number') {
+    dayIdx = Math.max(0, Math.min(6, period))
+    periodName = dayIdx === 0 ? 'today' : dayIdx === 1 ? 'tomorrow' : dayIdx === 2 ? 'day after tomorrow' : `day ${dayIdx + 1}`
+  } else if (typeof period === 'string') {
+    const p = period.toLowerCase()
+    if (p.includes('day after') || p.includes('overmorrow') || p === '2') {
+      dayIdx = 2
+      periodName = 'day after tomorrow'
+    } else if (p.includes('today') || p === '0' || p === 'now') {
+      dayIdx = 0
+      periodName = 'today'
+    } else {
+      dayIdx = 1
+      periodName = 'tomorrow'
+    }
+  }
 
   const precipProb =
     daily?.precipitation_probability_max?.[dayIdx] ??
@@ -155,7 +172,7 @@ function extractPeriodMetrics(weatherData, snapshot, period = 'tomorrow') {
   const condition = getWeatherCondition(weatherCode)
 
   return {
-    period: isTomorrow ? 'tomorrow' : 'today',
+    period: periodName,
     precipProb: Math.round(precipProb),
     precipSum: Number(Number(precipSum).toFixed(1)),
     tempMax: tempMax != null ? Math.round(tempMax) : null,
@@ -383,18 +400,51 @@ function analyzeHistoricalTrends(historicalResult) {
   const lastYear = yearlySeries[yearlySeries.length - 1]
   const overallAvg = Number((yVals.reduce((a, b) => a + b, 0) / n).toFixed(1))
 
+  // Linear trend for annual precipitation
+  const pVals = yearlySeries.map((s) => s.totalPrecip)
+  const pMean = pVals.reduce((a, b) => a + b, 0) / n
+
+  let pNum = 0
+  let pDen = 0
+  for (let i = 0; i < n; i++) {
+    pNum += (xVals[i] - xMean) * (pVals[i] - pMean)
+    pDen += (xVals[i] - xMean) ** 2
+  }
+  const precipSlope = pDen !== 0 ? pNum / pDen : 0
+  const precipTrendDirection = precipSlope > 5 ? 'Increasing' : precipSlope < -5 ? 'Decreasing' : 'Stable'
+  const overallAvgPrecip = Number(pMean.toFixed(1))
+
+  let wettest = yearlySeries[0]
+  let driest = yearlySeries[0]
+  for (const item of yearlySeries) {
+    if (item.totalPrecip > wettest.totalPrecip) wettest = item
+    if (item.totalPrecip < driest.totalPrecip) driest = item
+  }
+
   return {
     period: `${firstYear.year} - ${lastYear.year}`,
-    metric: 'Annual Mean Temperature',
+    metric: 'Annual Mean Temperature & Precipitation',
     trend: trendDirection,
     slope: `${slope >= 0 ? '+' : ''}${slope.toFixed(3)}°C/year`,
     historicalAverage: `${overallAvg}°C`,
     earliestAverage: `${firstYear.avgTemp}°C (${firstYear.year})`,
     recentAverage: `${lastYear.avgTemp}°C (${lastYear.year})`,
+    // Precipitation trends & statistics
+    precipTrend: precipTrendDirection,
+    precipSlope: `${precipSlope >= 0 ? '+' : ''}${precipSlope.toFixed(2)} mm/year`,
+    averageAnnualPrecipitation: `${overallAvgPrecip} mm`,
+    wettestYear: `${wettest.year} (${wettest.totalPrecip} mm)`,
+    driestYear: `${driest.year} (${driest.totalPrecip} mm)`,
+    earliestPrecip: `${firstYear.totalPrecip} mm (${firstYear.year})`,
+    recentPrecip: `${lastYear.totalPrecip} mm (${lastYear.year})`,
+    yearlySeries,
     dataset: historicalResult.dataset || 'ECMWF ERA5 Reanalysis',
   }
 }
 
+// ----------------------------------------------------
+// 6. COMPACT STRUCTURED CONTEXT BUILDER FOR GEMINI
+// ----------------------------------------------------
 // ----------------------------------------------------
 // 6. COMPACT STRUCTURED CONTEXT BUILDER FOR GEMINI
 // ----------------------------------------------------
@@ -403,6 +453,9 @@ function buildStructuredWeatherContext({
   weatherData,
   snapshot,
   metrics,
+  todayMetrics,
+  tomorrowMetrics,
+  dayAfterTomorrowMetrics,
   risk,
   advisories,
   alerts,
@@ -434,14 +487,56 @@ function buildStructuredWeatherContext({
     }
   }
 
-  if (metrics) {
-    lines.push(`\nFORECAST (${metrics.period.toUpperCase()}):`)
-    lines.push(`Max Temperature: ${metrics.tempMax != null ? metrics.tempMax + '°C' : 'N/A'}`)
-    lines.push(`Min Temperature: ${metrics.tempMin != null ? metrics.tempMin + '°C' : 'N/A'}`)
-    lines.push(`Rain Probability: ${metrics.precipProb}%`)
-    lines.push(`Expected Rainfall: ${metrics.precipSum} mm`)
-    lines.push(`Max Wind Speed: ${metrics.windSpeed} km/h`)
-    lines.push(`Expected Condition: ${metrics.conditionLabel}`)
+  // Today's forecast
+  const mToday = todayMetrics || (metrics?.period === 'today' ? metrics : extractPeriodMetrics(weatherData, snapshot, 0))
+  if (mToday) {
+    lines.push('\nTODAY FORECAST:')
+    lines.push(`Max Temperature: ${mToday.tempMax != null ? mToday.tempMax + '°C' : 'N/A'}`)
+    lines.push(`Min Temperature: ${mToday.tempMin != null ? mToday.tempMin + '°C' : 'N/A'}`)
+    lines.push(`Rain Probability: ${mToday.precipProb}%`)
+    lines.push(`Expected Rainfall: ${mToday.precipSum} mm`)
+    lines.push(`Max Wind Speed: ${mToday.windSpeed} km/h`)
+    lines.push(`Expected Condition: ${mToday.conditionLabel}`)
+  }
+
+  // Tomorrow's forecast
+  const mTomorrow = tomorrowMetrics || (metrics?.period === 'tomorrow' ? metrics : extractPeriodMetrics(weatherData, snapshot, 1))
+  if (mTomorrow) {
+    lines.push('\nTOMORROW FORECAST:')
+    lines.push(`Max Temperature: ${mTomorrow.tempMax != null ? mTomorrow.tempMax + '°C' : 'N/A'}`)
+    lines.push(`Min Temperature: ${mTomorrow.tempMin != null ? mTomorrow.tempMin + '°C' : 'N/A'}`)
+    lines.push(`Rain Probability: ${mTomorrow.precipProb}%`)
+    lines.push(`Expected Rainfall: ${mTomorrow.precipSum} mm`)
+    lines.push(`Max Wind Speed: ${mTomorrow.windSpeed} km/h`)
+    lines.push(`Expected Condition: ${mTomorrow.conditionLabel}`)
+  }
+
+  // Day after tomorrow's forecast
+  const mDayAfter = dayAfterTomorrowMetrics || extractPeriodMetrics(weatherData, snapshot, 2)
+  if (mDayAfter && weatherData?.daily?.time?.[2]) {
+    lines.push('\nDAY AFTER TOMORROW FORECAST:')
+    lines.push(`Max Temperature: ${mDayAfter.tempMax != null ? mDayAfter.tempMax + '°C' : 'N/A'}`)
+    lines.push(`Min Temperature: ${mDayAfter.tempMin != null ? mDayAfter.tempMin + '°C' : 'N/A'}`)
+    lines.push(`Rain Probability: ${mDayAfter.precipProb}%`)
+    lines.push(`Expected Rainfall: ${mDayAfter.precipSum} mm`)
+    lines.push(`Max Wind Speed: ${mDayAfter.windSpeed} km/h`)
+    lines.push(`Expected Condition: ${mDayAfter.conditionLabel}`)
+  }
+
+  // 7-day overview
+  if (weatherData?.daily?.time?.length > 3) {
+    lines.push('\n7-DAY FORECAST SUMMARY:')
+    const daily = weatherData.daily
+    for (let i = 0; i < Math.min(7, daily.time.length); i++) {
+      const date = daily.time[i]
+      const maxT = daily.temperature_2m_max?.[i]
+      const minT = daily.temperature_2m_min?.[i]
+      const pProb = daily.precipitation_probability_max?.[i]
+      const pSum = daily.precipitation_sum?.[i]
+      const cond = getWeatherCondition(daily.weather_code?.[i]).label
+      const dayName = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : i === 2 ? 'Day After Tomorrow' : date
+      lines.push(`- ${dayName} (${date}): ${cond} | High: ${maxT}°C, Low: ${minT}°C | Rain: ${pProb}% (${pSum} mm)`)
+    }
   }
 
   if (risk) {
@@ -478,18 +573,92 @@ function buildStructuredWeatherContext({
   )
 
   if (historicalAnalysis) {
-    lines.push('\nHISTORICAL CLIMATE ANALYSIS (ECMWF ERA5 Reanalysis):')
+    lines.push('\nHISTORICAL CLIMATE & RAINFALL ANALYSIS (ECMWF ERA5 Reanalysis):')
     lines.push(`Period: ${historicalAnalysis.period}`)
-    lines.push(`Metric: ${historicalAnalysis.metric}`)
-    lines.push(`Trend Direction: ${historicalAnalysis.trend}`)
-    lines.push(`Rate of Change (Slope): ${historicalAnalysis.slope}`)
-    lines.push(`Overall Average: ${historicalAnalysis.historicalAverage}`)
-    lines.push(`Earliest Average: ${historicalAnalysis.earliestAverage}`)
-    lines.push(`Recent Average: ${historicalAnalysis.recentAverage}`)
+    lines.push(`Temperature Trend: ${historicalAnalysis.trend} (${historicalAnalysis.slope}) | Historical Average: ${historicalAnalysis.historicalAverage}`)
+    lines.push(`Earliest Mean Temp: ${historicalAnalysis.earliestAverage} | Recent Mean Temp: ${historicalAnalysis.recentAverage}`)
+    if (historicalAnalysis.precipTrend) {
+      lines.push(`Rainfall Trend: ${historicalAnalysis.precipTrend} (${historicalAnalysis.precipSlope})`)
+      lines.push(`Average Annual Rainfall: ${historicalAnalysis.averageAnnualPrecipitation}`)
+      lines.push(`Wettest Year: ${historicalAnalysis.wettestYear}`)
+      lines.push(`Driest Year: ${historicalAnalysis.driestYear}`)
+      lines.push(`Recent Annual Rainfall: ${historicalAnalysis.recentPrecip}`)
+    }
   }
 
   lines.push('\n=== END WEATHER CONTEXT ===')
   lines.push('INSTRUCTION FOR FACTS: Use ONLY the supplied weather context above for all weather facts, numbers, and predictions. NEVER fabricate or alter numbers.')
+
+  return lines.join('\n')
+}
+
+// ----------------------------------------------------
+// COMPARATIVE WEATHER CONTEXT BUILDER
+// ----------------------------------------------------
+function buildComparativeWeatherContext({
+  loc1,
+  loc2,
+  snapshot1,
+  snapshot2,
+  metricsToday1,
+  metricsToday2,
+  metricsTomorrow1,
+  metricsTomorrow2,
+  risk1,
+  risk2,
+  advisories1,
+  advisories2,
+}) {
+  const lines = []
+  const name1 = loc1?.name || 'Location 1'
+  const name2 = loc2?.name || 'Location 2'
+
+  lines.push('=== REAL COMPARATIVE WEATHER CONTEXT (OPEN-METEO / AUTHORITATIVE) ===')
+  lines.push(`Comparing: ${name1} vs ${name2}`)
+
+  // Location 1
+  lines.push(`\n--- LOCATION 1: ${name1} ---`)
+  if (snapshot1) {
+    const c1 = getWeatherCondition(snapshot1.weatherCode)
+    lines.push(`Current: ${snapshot1.temperature != null ? snapshot1.temperature + '°C' : 'N/A'}, ${c1.label} | Humidity: ${snapshot1.humidity || 'N/A'}% | Wind: ${snapshot1.windSpeed || 'N/A'} km/h`)
+  }
+  if (metricsToday1) {
+    lines.push(`Today Forecast: High ${metricsToday1.tempMax}°C, Low ${metricsToday1.tempMin}°C, Rain: ${metricsToday1.precipProb}% (${metricsToday1.precipSum} mm, ${metricsToday1.conditionLabel})`)
+  }
+  if (metricsTomorrow1) {
+    lines.push(`Tomorrow Forecast: High ${metricsTomorrow1.tempMax}°C, Low ${metricsTomorrow1.tempMin}°C, Rain: ${metricsTomorrow1.precipProb}% (${metricsTomorrow1.precipSum} mm, ${metricsTomorrow1.conditionLabel})`)
+  }
+  if (risk1) lines.push(`Risk Level: ${risk1.level} (${risk1.title})`)
+  if (advisories1?.travel) lines.push(`Travel Advisory: ${advisories1.travel}`)
+
+  // Location 2
+  lines.push(`\n--- LOCATION 2: ${name2} ---`)
+  if (snapshot2) {
+    const c2 = getWeatherCondition(snapshot2.weatherCode)
+    lines.push(`Current: ${snapshot2.temperature != null ? snapshot2.temperature + '°C' : 'N/A'}, ${c2.label} | Humidity: ${snapshot2.humidity || 'N/A'}% | Wind: ${snapshot2.windSpeed || 'N/A'} km/h`)
+  }
+  if (metricsToday2) {
+    lines.push(`Today Forecast: High ${metricsToday2.tempMax}°C, Low ${metricsToday2.tempMin}°C, Rain: ${metricsToday2.precipProb}% (${metricsToday2.precipSum} mm, ${metricsToday2.conditionLabel})`)
+  }
+  if (metricsTomorrow2) {
+    lines.push(`Tomorrow Forecast: High ${metricsTomorrow2.tempMax}°C, Low ${metricsTomorrow2.tempMin}°C, Rain: ${metricsTomorrow2.precipProb}% (${metricsTomorrow2.precipSum} mm, ${metricsTomorrow2.conditionLabel})`)
+  }
+  if (risk2) lines.push(`Risk Level: ${risk2.level} (${risk2.title})`)
+  if (advisories2?.travel) lines.push(`Travel Advisory: ${advisories2.travel}`)
+
+  // Quick Analytical Diff
+  lines.push('\n--- COMPARATIVE SUMMARY METRICS ---')
+  if (snapshot1?.temperature != null && snapshot2?.temperature != null) {
+    const diff = (snapshot1.temperature - snapshot2.temperature).toFixed(1)
+    lines.push(`Current Temperature Difference: ${name1} is ${diff >= 0 ? '+' : ''}${diff}°C relative to ${name2}`)
+  }
+  if (metricsTomorrow1 && metricsTomorrow2) {
+    lines.push(`Tomorrow Rain Probability: ${name1} (${metricsTomorrow1.precipProb}%) vs ${name2} (${metricsTomorrow2.precipProb}%)`)
+    lines.push(`Tomorrow High Temperatures: ${name1} (${metricsTomorrow1.tempMax}°C) vs ${name2} (${metricsTomorrow2.tempMax}°C)`)
+  }
+
+  lines.push('\n=== END COMPARATIVE WEATHER CONTEXT ===')
+  lines.push('INSTRUCTION FOR FACTS: Provide an objective, insightful side-by-side comparison comparing temperatures, rain likelihood, and travel comfort between both places using ONLY the supplied data.')
 
   return lines.join('\n')
 }
@@ -518,7 +687,10 @@ function generateDeterministicFallback({
 
   // Historical / climate inquiry
   if (historicalAnalysis) {
-    return `According to ECMWF ERA5 Reanalysis data for ${loc} over ${historicalAnalysis.period}, the annual mean temperature exhibits an ${historicalAnalysis.trend.toLowerCase()} trend with a rate of ${historicalAnalysis.slope}. The historical average is ${historicalAnalysis.historicalAverage}, with recent observations around ${historicalAnalysis.recentAverage}.`
+    if (/rain|rainfall|precip|monsoon/i.test(q)) {
+      return `According to ECMWF ERA5 Reanalysis data for ${loc} over ${historicalAnalysis.period}:\n\n- **Annual Rainfall Trend**: ${historicalAnalysis.precipTrend} (rate of ${historicalAnalysis.precipSlope})\n- **Average Annual Precipitation**: ${historicalAnalysis.averageAnnualPrecipitation}\n- **Wettest Year**: ${historicalAnalysis.wettestYear}\n- **Driest Year**: ${historicalAnalysis.driestYear}\n- **Recent Annual Rainfall**: ${historicalAnalysis.recentPrecip}\n\nOver the same period, mean temperature has exhibited an ${historicalAnalysis.trend.toLowerCase()} trend (${historicalAnalysis.slope}) with a historical average of ${historicalAnalysis.historicalAverage}.`
+    }
+    return `According to ECMWF ERA5 Reanalysis data for ${loc} over ${historicalAnalysis.period}, the annual mean temperature exhibits an ${historicalAnalysis.trend.toLowerCase()} trend with a rate of ${historicalAnalysis.slope}. The historical average temperature is ${historicalAnalysis.historicalAverage}, with recent observations around ${historicalAnalysis.recentAverage}. In terms of precipitation, the annual average is ${historicalAnalysis.averageAnnualPrecipitation} (${historicalAnalysis.precipTrend} at ${historicalAnalysis.precipSlope}), with the wettest year being ${historicalAnalysis.wettestYear} and driest being ${historicalAnalysis.driestYear}.`
   }
 
   // Multi-intent: Rain + Travel + Model
@@ -583,6 +755,51 @@ function generateDeterministicFallback({
   return `${loc} is currently experiencing ${snapshot ? getWeatherCondition(snapshot.weatherCode).label : metrics.conditionLabel} with a temperature of ${snapshot?.temperature != null ? snapshot.temperature + '°C' : metrics.tempMax + '°C'}. Tomorrow's high is expected to reach ${metrics.tempMax}°C with a low of ${metrics.tempMin}°C and a rain probability of ${metrics.precipProb}%.`
 }
 
+// ----------------------------------------------------
+// 8. DETERMINISTIC COMPARISON FALLBACK GENERATOR
+// ----------------------------------------------------
+function generateDeterministicComparisonFallback({
+  loc1,
+  loc2,
+  snapshot1,
+  snapshot2,
+  metricsToday1,
+  metricsToday2,
+  metricsTomorrow1,
+  metricsTomorrow2,
+  risk1,
+  risk2,
+  advisories1,
+  advisories2,
+}) {
+  const name1 = loc1?.name || 'Location 1'
+  const name2 = loc2?.name || 'Location 2'
+
+  const tempDiff = (snapshot1?.temperature != null && snapshot2?.temperature != null)
+    ? Math.abs(snapshot1.temperature - snapshot2.temperature).toFixed(1)
+    : null
+  const warmer = (snapshot1?.temperature > snapshot2?.temperature) ? name1 : name2
+  const cooler = warmer === name1 ? name2 : name1
+
+  const cond1 = snapshot1 ? getWeatherCondition(snapshot1.weatherCode).label : metricsTomorrow1?.conditionLabel
+  const cond2 = snapshot2 ? getWeatherCondition(snapshot2.weatherCode).label : metricsTomorrow2?.conditionLabel
+
+  return `### Weather Comparison: ${name1} vs ${name2}
+
+**Current Conditions:**
+- **${name1}**: ${snapshot1?.temperature != null ? snapshot1.temperature + '°C' : 'N/A'}, ${cond1} (Humidity: ${snapshot1?.humidity || 'N/A'}%, Wind: ${snapshot1?.windSpeed || 'N/A'} km/h)
+- **${name2}**: ${snapshot2?.temperature != null ? snapshot2.temperature + '°C' : 'N/A'}, ${cond2} (Humidity: ${snapshot2?.humidity || 'N/A'}%, Wind: ${snapshot2?.windSpeed || 'N/A'} km/h)
+${tempDiff ? `\n*${warmer} is currently warmer than ${cooler} by ${tempDiff}°C.*` : ''}
+
+**Tomorrow's Forecast:**
+- **${name1}**: High ${metricsTomorrow1?.tempMax}°C / Low ${metricsTomorrow1?.tempMin}°C, Rain chance: ${metricsTomorrow1?.precipProb}% (${metricsTomorrow1?.precipSum} mm, ${metricsTomorrow1?.conditionLabel})
+- **${name2}**: High ${metricsTomorrow2?.tempMax}°C / Low ${metricsTomorrow2?.tempMin}°C, Rain chance: ${metricsTomorrow2?.precipProb}% (${metricsTomorrow2?.precipSum} mm, ${metricsTomorrow2?.conditionLabel})
+
+**Travel & Risk Outlook:**
+- **${name1}**: Risk level is **${risk1?.level || 'LOW'}**. ${advisories1?.travel || 'Conditions appear settled.'}
+- **${name2}**: Risk level is **${risk2?.level || 'LOW'}**. ${advisories2?.travel || 'Conditions appear settled.'}`
+}
+
 module.exports = {
   getWeatherCondition,
   isRainCategory,
@@ -593,5 +810,7 @@ module.exports = {
   evaluateAlerts,
   analyzeHistoricalTrends,
   buildStructuredWeatherContext,
+  buildComparativeWeatherContext,
   generateDeterministicFallback,
+  generateDeterministicComparisonFallback,
 }

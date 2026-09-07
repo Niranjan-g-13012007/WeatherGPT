@@ -42,8 +42,14 @@ const {
   evaluateAlerts,
   analyzeHistoricalTrends,
   buildStructuredWeatherContext,
+  buildComparativeWeatherContext,
   generateDeterministicFallback,
+  generateDeterministicComparisonFallback,
 } = require('../services/weatherAnalysisService')
+const {
+  extractLocationFromQuery,
+  detectComparisonQuery,
+} = require('../utils/locationResolver')
 const {
   isGeminiConfigured,
   generateGeminiResponse,
@@ -108,55 +114,6 @@ function getFallbackGreeting(lang) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LOCATION EXTRACTION
-// ─────────────────────────────────────────────────────────────────────────────
-function extractLocationFromQuery(query, fallbackLocation, history = []) {
-  if (!query || typeof query !== 'string') return fallbackLocation
-
-  const q = query.toLowerCase()
-
-  for (const loc of DEFAULT_LOCATIONS) {
-    const regex = new RegExp(`\\b${loc.name}\\b`, 'i')
-    if (regex.test(query)) return loc
-  }
-
-  const aliases = {
-    bangalore: 'Bengaluru', trichy: 'Tiruchirappalli',
-    bombay: 'Mumbai', madras: 'Chennai', calcutta: 'Kolkata',
-  }
-  for (const [alias, canonical] of Object.entries(aliases)) {
-    if (new RegExp(`\\b${alias}\\b`, 'i').test(q)) {
-      const match = DEFAULT_LOCATIONS.find((l) => l.name.toLowerCase() === canonical.toLowerCase())
-      if (match) return match
-    }
-  }
-
-  const match = query.match(
-    /\b(?:in|to|for|at)\s+([A-Za-z\s]+?)(?:\s+(?:today|tomorrow|tonight|this|and|should|what|is|how|next|\?|$))/i
-  )
-  if (match && match[1]) {
-    const candidate = match[1].trim()
-    if (candidate && candidate.length > 2 && !/^(the|a|my|our|current|this|here)$/i.test(candidate)) {
-      const found = DEFAULT_LOCATIONS.find((l) => l.name.toLowerCase() === candidate.toLowerCase())
-      if (found) return found
-      return { name: candidate }
-    }
-  }
-
-  if (Array.isArray(history) && history.length > 0) {
-    const recent = history.slice(-4).reverse()
-    for (const msg of recent) {
-      const content = msg?.content || ''
-      for (const loc of DEFAULT_LOCATIONS) {
-        if (new RegExp(`\\b${loc.name}\\b`, 'i').test(content)) return loc
-      }
-    }
-  }
-
-  return fallbackLocation || DEFAULT_LOCATIONS[0]
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // SUSPICIOUS RESPONSE VALIDATION
 // ─────────────────────────────────────────────────────────────────────────────
 function isSuspiciousResponse(answer, weatherContext, locationName) {
@@ -176,6 +133,7 @@ function isSuspiciousResponse(answer, weatherContext, locationName) {
   const suspicious = answerNumbers.some((n) => {
     const num = parseFloat(n)
     if (num <= 10) return false
+    if (num >= 2000 && num <= 2035) return false // Allow calendar years like 2026
     return !contextNumbers.has(n)
   })
 
@@ -352,7 +310,109 @@ async function handleChat(req, res) {
       return res.status(200).json({ success: true, answer: rangeAnswer, enhancedByGemini: false, language: responseLanguage })
     }
 
-    // ── 7. RESOLVE LOCATION & COORDINATES ────────────────────────────────────
+    // ── 7. COMPARISON QUERY CHECK & EXECUTION ─────────────────────────────────
+    const comparison = detectComparisonQuery(query, clientLocation, conversationHistory)
+    if (comparison.isComparison && comparison.loc1 && comparison.loc2) {
+      let loc1 = comparison.loc1
+      let loc2 = comparison.loc2
+
+      if (!loc1.latitude || !loc1.longitude) {
+        const geo1 = await geocodeLocation(loc1.name)
+        if (geo1) loc1 = { ...loc1, ...geo1 }
+      }
+      if (!loc2.latitude || !loc2.longitude) {
+        const geo2 = await geocodeLocation(loc2.name)
+        if (geo2) loc2 = { ...loc2, ...geo2 }
+      }
+
+      if (loc1.latitude && loc1.longitude && loc2.latitude && loc2.longitude) {
+        try {
+          const [weatherData1, weatherData2] = await Promise.all([
+            fetchForecastWeather(loc1.latitude, loc1.longitude),
+            fetchForecastWeather(loc2.latitude, loc2.longitude),
+          ])
+
+          const snapshot1 = buildCurrentSnapshot(weatherData1)
+          const snapshot2 = buildCurrentSnapshot(weatherData2)
+
+          const today1 = extractPeriodMetrics(weatherData1, snapshot1, 0)
+          const today2 = extractPeriodMetrics(weatherData2, snapshot2, 0)
+          const tomorrow1 = extractPeriodMetrics(weatherData1, snapshot1, 1)
+          const tomorrow2 = extractPeriodMetrics(weatherData2, snapshot2, 1)
+
+          const risk1 = evaluateRisk(snapshot1)
+          const risk2 = evaluateRisk(snapshot2)
+          const advisories1 = generateAdvisories(tomorrow1, risk1)
+          const advisories2 = generateAdvisories(tomorrow2, risk2)
+
+          const comparisonContext = buildComparativeWeatherContext({
+            loc1,
+            loc2,
+            snapshot1,
+            snapshot2,
+            metricsToday1: today1,
+            metricsToday2: today2,
+            metricsTomorrow1: tomorrow1,
+            metricsTomorrow2: tomorrow2,
+            risk1,
+            risk2,
+            advisories1,
+            advisories2,
+          })
+
+          let compAnswer = null
+          let enhancedByGemini = false
+
+          if (isGeminiConfigured()) {
+            compAnswer = await generateGeminiResponse({
+              query,
+              weatherContext: comparisonContext,
+              conversationHistory,
+              isConceptual: false,
+              responseLanguage,
+              detectedLanguage,
+            })
+            if (compAnswer) enhancedByGemini = true
+          }
+
+          if (!compAnswer) {
+            compAnswer = generateDeterministicComparisonFallback({
+              loc1,
+              loc2,
+              snapshot1,
+              snapshot2,
+              metricsToday1: today1,
+              metricsToday2: today2,
+              metricsTomorrow1: tomorrow1,
+              metricsTomorrow2: tomorrow2,
+              risk1,
+              risk2,
+              advisories1,
+              advisories2,
+            })
+          }
+
+          if (userId && compAnswer) {
+            await saveConversationTurn(userId, query, compAnswer, responseLanguage)
+          }
+
+          return res.status(200).json({
+            success: true,
+            answer: compAnswer,
+            source: 'Open-Meteo',
+            nwpModel: weatherData1?.model || 'ECMWF IFS',
+            location: `${loc1.name} vs ${loc2.name}`,
+            enhancedByGemini,
+            language: responseLanguage,
+            isComparison: true,
+          })
+        } catch (compErr) {
+          console.warn('Comparison weather fetch failed, proceeding with single location:', compErr.message)
+        }
+      }
+    }
+
+    // ── 8. RESOLVE SINGLE LOCATION & COORDINATES ─────────────────────────────
     let targetLoc = extractLocationFromQuery(query, clientLocation, conversationHistory)
     if (!targetLoc?.latitude || !targetLoc?.longitude) {
       const geocoded = await geocodeLocation(targetLoc?.name || 'Chennai')
@@ -365,9 +425,9 @@ async function handleChat(req, res) {
       }
     }
 
-    // ── 8. HISTORICAL / CLIMATE TREND CHECK ──────────────────────────────────
+    // ── 9. HISTORICAL / CLIMATE TREND CHECK ──────────────────────────────────
     const isClimateQuery =
-      /\b(climate|historical|history|trend|trends|past\s+\d+|last\s+\d+\s+years?|over\s+the\s+last|\b20\d\d\b|become\s+hotter|getting\s+hotter|weather\s+changed|changed\s+in|has.*changed)\b/i.test(query) &&
+      /\b(climate|historical|history|trend|trends|past\s+\d+|last\s+\d+\s+years?|over\s+the\s+last|\b20\d\d\b|become\s+hotter|getting\s+hotter|weather\s+changed|changed\s+in|has.*changed|rainfall\s+changed|rain.*over\s+the\s+years|precipitation\s+changed)\b/i.test(query) &&
       !/today|tomorrow|tonight|current/i.test(query)
 
     let historicalAnalysis = null
@@ -385,7 +445,7 @@ async function handleChat(req, res) {
       }
     }
 
-    // ── 9. FETCH LIVE WEATHER DATA FROM OPEN-METEO ───────────────────────────
+    // ── 10. FETCH LIVE WEATHER DATA FROM OPEN-METEO ───────────────────────────
     let weatherData = null
     let snapshot = null
     try {
@@ -398,20 +458,36 @@ async function handleChat(req, res) {
       return res.status(200).json({ success: true, answer: fetchErrAnswer, enhancedByGemini: false, language: responseLanguage })
     }
 
-    // ── 10. AUTHORITATIVE ENGINES (Risk, Advisory, Alerts) ───────────────────
-    const requestedPeriod = /tomorrow|next day/i.test(query) ? 'tomorrow' : 'today'
-    const metrics = extractPeriodMetrics(weatherData, snapshot, requestedPeriod)
+    // ── 11. AUTHORITATIVE ENGINES (Today, Tomorrow, Day After Tomorrow) ───────
+    const isTomorrow = /(?:tomorrow|next day|nalai|nalaiku|நாளை|நாளைக்கு|कल|రేపు|നാളെ|ನಾಳೆ)/i.test(query)
+    const isDayAfter = /(?:day after tomorrow|after tomorrow|overmorrow|நாளை மறுநாள்|परसों|ఎల్లుండి|മറ്റന്നാൾ|ನಾಡಿದ್ದು)/i.test(query)
+    const requestedPeriod = isDayAfter ? 'day after tomorrow' : isTomorrow ? 'tomorrow' : 'today'
+
+    const metricsToday = extractPeriodMetrics(weatherData, snapshot, 0)
+    const metricsTomorrow = extractPeriodMetrics(weatherData, snapshot, 1)
+    const metricsDayAfter = extractPeriodMetrics(weatherData, snapshot, 2)
+    const metrics = isDayAfter ? metricsDayAfter : isTomorrow ? metricsTomorrow : metricsToday
+
     const risk = evaluateRisk(snapshot)
     const advisories = generateAdvisories(metrics, risk)
     const alerts = evaluateAlerts(weatherData)
 
-    // ── 11. BUILD STRUCTURED WEATHER CONTEXT ─────────────────────────────────
+    // ── 12. BUILD STRUCTURED WEATHER CONTEXT ─────────────────────────────────
     const weatherContext = buildStructuredWeatherContext({
-      location: targetLoc, weatherData, snapshot,
-      metrics, risk, advisories, alerts, historicalAnalysis,
+      location: targetLoc,
+      weatherData,
+      snapshot,
+      metrics,
+      todayMetrics: metricsToday,
+      tomorrowMetrics: metricsTomorrow,
+      dayAfterTomorrowMetrics: metricsDayAfter,
+      risk,
+      advisories,
+      alerts,
+      historicalAnalysis,
     })
 
-    // ── 12. GEMINI MULTILINGUAL RESPONSE GENERATION ───────────────────────────
+    // ── 13. GEMINI MULTILINGUAL RESPONSE GENERATION ───────────────────────────
     let answer = null
     let enhancedByGemini = false
 
@@ -427,7 +503,7 @@ async function handleChat(req, res) {
       if (answer) enhancedByGemini = true
     }
 
-    // ── 13. SUSPICIOUS RESPONSE VALIDATION (one re-verification pass) ─────────
+    // ── 14. SUSPICIOUS RESPONSE VALIDATION (one re-verification pass) ─────────
     if (answer && enhancedByGemini) {
       const { suspicious, reason } = isSuspiciousResponse(answer, weatherContext, targetLoc.name)
       if (suspicious) {
@@ -446,7 +522,7 @@ async function handleChat(req, res) {
       }
     }
 
-    // ── 14. DETERMINISTIC FALLBACK ────────────────────────────────────────────
+    // ── 15. DETERMINISTIC FALLBACK ────────────────────────────────────────────
     if (!answer) {
       answer = generateDeterministicFallback({
         query, locationName: targetLoc.name, metrics, snapshot,
@@ -455,7 +531,7 @@ async function handleChat(req, res) {
       enhancedByGemini = false
     }
 
-    // ── 15. SAVE TO MONGODB ───────────────────────────────────────────────────
+    // ── 16. SAVE TO MONGODB ───────────────────────────────────────────────────
     if (userId && answer) {
       await saveConversationTurn(userId, query, answer, responseLanguage)
     }

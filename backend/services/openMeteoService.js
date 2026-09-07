@@ -68,6 +68,7 @@ const HISTORICAL_DAILY_FIELDS = [
 
 const DEFAULT_LOCATIONS = [
   { name: 'Chennai', state: 'Tamil Nadu', latitude: 13.0827, longitude: 80.2707 },
+  { name: 'Perundurai', state: 'Tamil Nadu', latitude: 11.2764, longitude: 77.5838 },
   { name: 'Coimbatore', state: 'Tamil Nadu', latitude: 11.0168, longitude: 76.9558 },
   { name: 'Madurai', state: 'Tamil Nadu', latitude: 9.9252, longitude: 78.1198 },
   { name: 'Salem', state: 'Tamil Nadu', latitude: 11.6643, longitude: 78.146 },
@@ -76,7 +77,13 @@ const DEFAULT_LOCATIONS = [
   { name: 'Tirunelveli', state: 'Tamil Nadu', latitude: 8.7139, longitude: 77.7567 },
   { name: 'Thanjavur', state: 'Tamil Nadu', latitude: 10.787, longitude: 79.1378 },
   { name: 'Vellore', state: 'Tamil Nadu', latitude: 12.9165, longitude: 79.1325 },
+  { name: 'Tiruppur', state: 'Tamil Nadu', latitude: 11.1085, longitude: 77.3411 },
   { name: 'Ooty', state: 'Tamil Nadu', latitude: 11.4064, longitude: 76.6932 },
+  { name: 'Kodaikanal', state: 'Tamil Nadu', latitude: 10.2381, longitude: 77.4892 },
+  { name: 'Dindigul', state: 'Tamil Nadu', latitude: 10.3673, longitude: 77.9803 },
+  { name: 'Kanchipuram', state: 'Tamil Nadu', latitude: 12.8342, longitude: 79.7036 },
+  { name: 'Kanyakumari', state: 'Tamil Nadu', latitude: 8.0883, longitude: 77.5385 },
+  { name: 'Puducherry', state: 'Puducherry', latitude: 11.9416, longitude: 79.8083 },
   { name: 'Bengaluru', state: 'Karnataka', latitude: 12.9716, longitude: 77.5946 },
   { name: 'Mumbai', state: 'Maharashtra', latitude: 19.076, longitude: 72.8777 },
   { name: 'Delhi', state: 'Delhi', latitude: 28.6139, longitude: 77.209 },

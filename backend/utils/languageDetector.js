@@ -55,9 +55,22 @@ async function getFranc() {
  * @returns {Promise<string>} - Language code: 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml' | 'mr' | 'bn' | 'gu' | 'pa' | 'or'
  */
 async function detectLanguage(text) {
-  if (!text || typeof text !== 'string' || text.trim().length < 3) {
+  if (!text || typeof text !== 'string' || text.trim().length < 2) {
     return 'en'
   }
+
+  const str = text.trim()
+
+  // Deterministic Unicode script block detection for Indian languages
+  if (/[\u0B80-\u0BFF]/.test(str)) return 'ta' // Tamil
+  if (/[\u0C00-\u0C7F]/.test(str)) return 'te' // Telugu
+  if (/[\u0C80-\u0CFF]/.test(str)) return 'kn' // Kannada
+  if (/[\u0D00-\u0D7F]/.test(str)) return 'ml' // Malayalam
+  if (/[\u0980-\u09FF]/.test(str)) return 'bn' // Bengali
+  if (/[\u0A80-\u0AFF]/.test(str)) return 'gu' // Gujarati
+  if (/[\u0A00-\u0A7F]/.test(str)) return 'pa' // Punjabi
+  if (/[\u0B00-\u0B7F]/.test(str)) return 'or' // Odia
+  if (/[\u0900-\u097F]/.test(str)) return 'hi' // Hindi / Devanagari
 
   try {
     const franc = await getFranc()

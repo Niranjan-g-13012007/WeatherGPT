@@ -85,12 +85,19 @@ const CONCEPTUAL_PATTERNS = [
 // ─── Conversational Follow-up Patterns ───────────────────────────────────────
 const CONVERSATIONAL_FOLLOWUP_PATTERNS = [
   /\b(?:should i|do i need|carry|take|bring|wear)\s+(?:an?\s+)?(?:umbrella|raincoat|jacket|sweater|sunglasses|sunscreen|boots)\b/i,
-  /\b(?:what about|how about|and)\s+(?:tomorrow|tonight|today|yesterday|the weekend|afternoon|morning|later)\b/i,
+  /\b(?:what about|how about|and|tell me about)\s+(?:the\s+)?(?:day after tomorrow|tomorrow|tonight|today|yesterday|the weekend|this weekend|next week|afternoon|morning|evening|later|coming days)\b/i,
+  /\b(?:day after tomorrow|the day after tomorrow|day after)\b/i,
   /\b(?:is that|is it)\s+(?:safe|dangerous|too hot|too cold|too windy|okay|fine|recommended|advisable)\b/i,
   /\b(?:what should i do|what do you recommend|any precautions|what to do)\b/i,
   /\b(?:will it get|is it going to get)\s+(?:worse|better|hotter|colder|rainier)\b/i,
   /\b(?:then should i|can i still|should i postpone|should i delay)\b/i,
   /\b(?:why|why is that|tell me more|could you explain|what else)\b/i,
+  /\b(?:which is better|which place is better|which one is better|which is hotter|which is cooler|which is colder|which is warmer)\b/i,
+  /\b(?:compare|comparison|versus| vs | vs\. )\b/i,
+  /\b(?:how has.*changed|changed.*years|over the years|past.*years|over the last)\b/i,
+  // Regional language temporal & comparative follow-ups
+  /\b(?:நாளை|நாளைக்கு|நாளை மறுநாள்|இன்று|இன்னைக்கு|நேற்று|ஒப்பீடு|ஒப்பிடுக|எது சிறந்தது)\b/,
+  /\b(?:कल|परसों|आज|तुलना|मौसम|बारिश)\b/,
 ]
 
 // ─── Multilingual Greeting Patterns ─────────────────────────────────────────
@@ -228,15 +235,18 @@ function isWeatherRelated(query, conversationHistory = []) {
     })
 
     if (contextHasWeather) {
-      // If previous context is weather, allow short clarifying follow-ups
+      // If previous context is weather, allow short clarifying, temporal, or comparative follow-ups
       if (
         /^(why|how so|what about it|and then|what else|is it safe|should i go|should i travel|can i go outside|really|tell me more|is that good|is that bad)\??$/i.test(lower) ||
-        /\b(travel|outside|outdoor|drive|trip|commute|go out|step out)\b/i.test(lower)
+        /\b(travel|outside|outdoor|drive|trip|commute|go out|step out|safe|unsafe)\b/i.test(lower) ||
+        /\b(?:day after|tomorrow|tonight|today|yesterday|weekend|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday|morning|evening|afternoon|later)\b/i.test(lower) ||
+        /\b(?:which|better|worse|hotter|cooler|colder|warmer|compare|versus|vs)\b/i.test(lower) ||
+        /\b(?:what about|how about|and then|what if)\b/i.test(lower)
       ) {
         return true
       }
       // Also allow short non-ASCII follow-ups if in weather context
-      if (trimmed.length < 30 && nonAsciiRatio > 0.2) {
+      if (trimmed.length < 50 && nonAsciiRatio > 0.15) {
         return true
       }
     }
