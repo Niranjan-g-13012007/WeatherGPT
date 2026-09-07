@@ -33,6 +33,12 @@
   border-radius: 9px;
   background: var(--color-navy);
   color: var(--color-sky-100);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.wg-nav-brand:hover .wg-nav-brand-icon {
+  box-shadow: 0 0 14px -2px rgba(4, 166, 196, 0.35);
+  transform: scale(1.06);
 }
 
 .wg-nav-links {

@@ -28,6 +28,15 @@ const FEATURES = [
   },
 ]
 
+const fadeUp = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (i = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, delay: i * 0.1, ease: 'easeOut' },
+  }),
+}
+
 export default function Home() {
   const navigate = useNavigate()
   const { location, snapshot } = useLocationWeather()
@@ -35,6 +44,7 @@ export default function Home() {
   return (
     <main className="home">
       <section className="hero">
+        <div className="hero-glow" />
         <div className="wg-container hero-inner">
           <motion.div
             className="hero-copy"
@@ -52,7 +62,7 @@ export default function Home() {
               guidance powered by real-time weather data.
             </p>
             <div className="hero-actions">
-              <button className="wg-btn wg-btn-primary" onClick={() => navigate('/assistant')}>
+              <button className="wg-btn wg-btn-primary hero-cta" onClick={() => navigate('/assistant')}>
                 Try WeatherGPT <ArrowRight size={16} />
               </button>
               <button className="wg-btn wg-btn-secondary" onClick={() => navigate('/forecast')}>
@@ -75,16 +85,24 @@ export default function Home() {
       <section className="features" id="features">
         <div className="wg-container">
           <div className="features-grid">
-            {FEATURES.map((feature) => {
+            {FEATURES.map((feature, i) => {
               const Icon = feature.icon
               return (
-                <div className="feature-card" key={feature.title}>
+                <motion.div
+                  className="feature-card"
+                  key={feature.title}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true, margin: '-30px' }}
+                  custom={i}
+                  variants={fadeUp}
+                >
                   <div className="feature-icon">
                     <Icon size={19} strokeWidth={2} />
                   </div>
                   <h3>{feature.title}</h3>
                   <p>{feature.description}</p>
-                </div>
+                </motion.div>
               )
             })}
           </div>

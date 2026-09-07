@@ -31,6 +31,11 @@
 
   --shadow-soft: 0 1px 2px rgba(12, 31, 53, 0.04), 0 8px 24px -12px rgba(12, 31, 53, 0.10);
   --shadow-lift: 0 4px 8px rgba(12, 31, 53, 0.05), 0 16px 40px -16px rgba(12, 31, 53, 0.18);
+  --shadow-glow: 0 0 20px -4px rgba(4, 166, 196, 0.25);
+
+  --gradient-brand: linear-gradient(135deg, var(--color-navy) 0%, var(--color-cyan-dark) 100%);
+  --gradient-sky: linear-gradient(135deg, var(--color-sky-50) 0%, var(--color-mist) 100%);
+  --gradient-hero: linear-gradient(180deg, var(--color-offwhite) 0%, var(--color-sky-50) 40%, var(--color-white) 100%);
 
   color-scheme: light;
 }
@@ -175,3 +180,25 @@ input {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ── Global reusable animations ────────────────────────────────────── */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(4, 166, 196, 0.18); }
+  50% { box-shadow: 0 0 16px 4px rgba(4, 166, 196, 0.22); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+

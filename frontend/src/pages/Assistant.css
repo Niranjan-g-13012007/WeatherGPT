@@ -150,7 +150,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 28px;
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: 2px solid transparent;
+  border-image: linear-gradient(90deg, var(--color-cyan), var(--color-sky-400), var(--color-line)) 1;
   background: var(--color-white);
   flex-shrink: 0;
 }
@@ -170,6 +171,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: pulse-glow 3s ease-in-out infinite;
 }
 
 .assistant-header-title h1 {
@@ -235,12 +237,13 @@
   width: 52px;
   height: 52px;
   border-radius: 16px;
-  background: var(--color-sky-50);
+  background: linear-gradient(135deg, var(--color-sky-50) 0%, var(--color-mist) 100%);
   color: var(--color-cyan-dark);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 10px;
+  animation: float 4s ease-in-out infinite;
 }
 
 .assistant-empty h2 {
@@ -269,11 +272,15 @@
   font-size: 0.84rem;
   font-weight: 500;
   color: var(--color-navy);
+  transition: all 0.22s ease;
 }
 
 .assistant-suggestions button:hover {
   border-color: var(--color-cyan);
   color: var(--color-cyan-dark);
+  background: var(--color-sky-50);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px -4px rgba(4, 166, 196, 0.18);
 }
 
 .assistant-input-area {
