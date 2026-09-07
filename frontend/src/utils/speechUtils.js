@@ -11,6 +11,8 @@
 // 5. Clean text processor: strips markdown asterisks, hashes, backticks, emojis, variation selectors, and parenthesized English glosses.
 // 6. Single-utterance coordinator with play/stop toggle behavior.
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
 const SCRIPT_LANG_MAP = [
   { regex: /[\u0B80-\u0BFF]/, code: 'ta', bcp47: 'ta-IN' }, // Tamil
   { regex: /[\u0C00-\u0C7F]/, code: 'te', bcp47: 'te-IN' }, // Telugu
@@ -329,9 +331,16 @@ export function findBestVoice(langCode) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SINGLE-INSTANCE SPEECH CONTROLLER
+// SINGLE-INSTANCE SPEECH CONTROLLER (HYBRID DUAL-ENGINE)
+//
+// 1. English: Uses the browser Web Speech API (David, Zira, etc.) with 0 latency.
+// 2. Indian languages (Tamil, Hindi, Telugu, Kannada, Malayalam, Marathi, Bengali,
+//    Gujarati, Punjabi, Odia): Streams studio-quality native speech via the backend
+//    TTS proxy (/api/chat/tts), reading every sentence clearly and correctly.
 // ─────────────────────────────────────────────────────────────────────────────
 let activeSpeakingId = null
+let activeAudio = null
+let activeAudioBlobUrl = null
 const stateListeners = new Set()
 
 export function getActiveSpeakingId() {
@@ -355,9 +364,31 @@ function notifyStateChange(id) {
 }
 
 /**
- * Stop any ongoing speech synthesis.
+ * Stop any ongoing speech playback (audio element or Web Speech API).
  */
 export function stopSpeech() {
+  // 1. Stop active streaming audio
+  if (activeAudio) {
+    try {
+      activeAudio.pause()
+      activeAudio.src = ''
+    } catch {
+      // Ignore
+    }
+    activeAudio = null
+  }
+
+  // 2. Revoke active blob URL to prevent memory leaks
+  if (activeAudioBlobUrl) {
+    try {
+      URL.revokeObjectURL(activeAudioBlobUrl)
+    } catch {
+      // Ignore
+    }
+    activeAudioBlobUrl = null
+  }
+
+  // 3. Stop browser Web Speech API
   if (typeof window !== 'undefined' && window.speechSynthesis) {
     try {
       window.speechSynthesis.cancel()
@@ -365,6 +396,7 @@ export function stopSpeech() {
       // Ignore
     }
   }
+
   notifyStateChange(null)
 }
 
@@ -381,11 +413,147 @@ if (typeof window !== 'undefined' && window.speechSynthesis) {
 }
 
 /**
+ * Play speech using browser Web Speech API (ideal for English).
+ */
+function speakWithWebSpeech(messageId, cleanText, langCode) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return
+
+  const bcp47 = BCP47_MAP[langCode] || 'en-IN'
+  const voice = findBestVoice(langCode)
+
+  const utterance = new SpeechSynthesisUtterance(cleanText)
+  utterance.lang = bcp47
+  if (voice) {
+    utterance.voice = voice
+  }
+
+  utterance.rate = 0.95
+  utterance.pitch = 1.0
+
+  utterance.onstart = () => {
+    notifyStateChange(messageId)
+  }
+
+  utterance.onend = () => {
+    if (activeSpeakingId === messageId) {
+      notifyStateChange(null)
+    }
+  }
+
+  utterance.onerror = () => {
+    if (activeSpeakingId === messageId) {
+      notifyStateChange(null)
+    }
+  }
+
+  try {
+    window.speechSynthesis.cancel()
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume()
+    }
+    window.speechSynthesis.speak(utterance)
+  } catch (err) {
+    console.warn('Web Speech API speak failed:', err)
+    notifyStateChange(null)
+  }
+}
+
+/**
+ * Play speech using the backend streaming TTS proxy.
+ * Speaks full native sentences for Tamil, Hindi, Telugu, Kannada, Malayalam, etc.
+ */
+async function playStreamAudio(messageId, cleanText, langCode) {
+  try {
+    notifyStateChange(messageId)
+
+    // For moderate length texts (< 450 chars), stream directly via GET for minimal latency
+    if (cleanText.length < 450) {
+      const audioUrl = `${API_BASE_URL}/api/chat/tts?lang=${encodeURIComponent(
+        langCode
+      )}&text=${encodeURIComponent(cleanText)}`
+
+      const audio = new Audio(audioUrl)
+      activeAudio = audio
+
+      audio.onplay = () => {
+        notifyStateChange(messageId)
+      }
+
+      audio.onended = () => {
+        if (activeSpeakingId === messageId) {
+          activeAudio = null
+          notifyStateChange(null)
+        }
+      }
+
+      audio.onerror = (e) => {
+        console.warn('Audio stream error, falling back to Web Speech API:', e)
+        if (activeSpeakingId === messageId) {
+          activeAudio = null
+          speakWithWebSpeech(messageId, cleanText, langCode)
+        }
+      }
+
+      await audio.play()
+      return
+    }
+
+    // For longer responses, fetch as POST blob to prevent URL query string limit truncation
+    const res = await fetch(`${API_BASE_URL}/api/chat/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cleanText, lang: langCode }),
+    })
+
+    if (!res.ok) {
+      throw new Error(`TTS server HTTP ${res.status}`)
+    }
+
+    const blob = await res.blob()
+    // Check if user pressed stop while audio was downloading
+    if (activeSpeakingId !== messageId) return
+
+    const blobUrl = URL.createObjectURL(blob)
+    activeAudioBlobUrl = blobUrl
+    const audio = new Audio(blobUrl)
+    activeAudio = audio
+
+    audio.onended = () => {
+      if (activeAudioBlobUrl) {
+        URL.revokeObjectURL(activeAudioBlobUrl)
+        activeAudioBlobUrl = null
+      }
+      if (activeSpeakingId === messageId) {
+        activeAudio = null
+        notifyStateChange(null)
+      }
+    }
+
+    audio.onerror = () => {
+      if (activeAudioBlobUrl) {
+        URL.revokeObjectURL(activeAudioBlobUrl)
+        activeAudioBlobUrl = null
+      }
+      if (activeSpeakingId === messageId) {
+        activeAudio = null
+        speakWithWebSpeech(messageId, cleanText, langCode)
+      }
+    }
+
+    await audio.play()
+  } catch (err) {
+    console.warn('TTS streaming error, falling back to Web Speech:', err)
+    if (activeSpeakingId === messageId) {
+      activeAudio = null
+      speakWithWebSpeech(messageId, cleanText, langCode)
+    }
+  }
+}
+
+/**
  * Speak the given message text. If this message is already speaking, stops it.
  */
 export function toggleSpeak(messageId, text, preferredLang = 'en') {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return
-
   // If already playing this message, clicking stops it
   if (activeSpeakingId === messageId) {
     stopSpeech()
@@ -400,56 +568,13 @@ export function toggleSpeak(messageId, text, preferredLang = 'en') {
   const clean = cleanTextForSpeech(text, detectedLang)
   if (!clean) return
 
-  const bcp47 = BCP47_MAP[detectedLang] || 'en-IN'
-  const voice = findBestVoice(detectedLang)
-
-  const utterance = new SpeechSynthesisUtterance(clean)
-  utterance.lang = bcp47
-  if (voice) {
-    utterance.voice = voice
+  // 1. English: uses local Web Speech API (David, Zira, etc. work 100% offline with zero latency)
+  if (detectedLang === 'en') {
+    speakWithWebSpeech(messageId, clean, 'en')
+    return
   }
 
-  // Natural speech cadence
-  utterance.rate = 0.95
-  utterance.pitch = 1.0
-
-  utterance.onstart = () => {
-    notifyStateChange(messageId)
-  }
-
-  utterance.onend = () => {
-    if (activeSpeakingId === messageId) {
-      notifyStateChange(null)
-    }
-  }
-
-  utterance.onerror = (e) => {
-    if (activeSpeakingId === messageId) {
-      notifyStateChange(null)
-    }
-  }
-
-  try {
-    // Cancel any hung synthesis state
-    window.speechSynthesis.cancel()
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume()
-    }
-
-    // Workaround for Chrome voice loading on first click
-    const currentVoices = window.speechSynthesis.getVoices()
-    if (currentVoices.length === 0 && !voice) {
-      const onVoicesLoaded = () => {
-        const v = findBestVoice(detectedLang)
-        if (v) utterance.voice = v
-        window.speechSynthesis.removeEventListener('voiceschanged', onVoicesLoaded)
-      }
-      window.speechSynthesis.addEventListener('voiceschanged', onVoicesLoaded)
-    }
-
-    window.speechSynthesis.speak(utterance)
-  } catch (err) {
-    console.warn('speechSynthesis.speak failed:', err)
-    notifyStateChange(null)
-  }
+  // 2. Indian & regional languages (Tamil, Hindi, Telugu, Kannada, Malayalam, Marathi, Bengali, Gujarati, Punjabi, Odia):
+  // Stream natural, native speech audio from the backend TTS proxy
+  playStreamAudio(messageId, clean, detectedLang)
 }
