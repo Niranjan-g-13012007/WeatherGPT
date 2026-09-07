@@ -24,6 +24,7 @@ import { sendChatMessage, getChatHistory, clearChatHistory } from '../services/c
 import { detectLocation, resolveTargetLocation, generateResponse } from '../utils/chatbot.js'
 import { evaluateRisk } from '../utils/riskEngine.js'
 import ChatMessage, { TypingIndicator } from '../components/ChatMessage.jsx'
+import { stopSpeech } from '../utils/speechUtils.js'
 import ChatInput from '../components/ChatInput.jsx'
 import WeatherCard from '../components/WeatherCard.jsx'
 import LocationPicker from '../components/LocationPicker.jsx'
@@ -101,6 +102,11 @@ export default function Assistant() {
       isUserSendingRef.current = false
     }
   }, [active?.messages, isTyping])
+
+  // Cleanup speech on unmount
+  useEffect(() => {
+    return () => stopSpeech()
+  }, [])
 
   // ─── Load MongoDB history for authenticated users ──────────────────────────
   useEffect(() => {
@@ -205,6 +211,7 @@ export default function Assistant() {
   }
 
   function handleNewChat() {
+    stopSpeech()
     const conv = makeConversation(location.name)
     setConversations((prev) => [conv, ...prev])
     setActiveId(conv.id)
@@ -212,6 +219,7 @@ export default function Assistant() {
 
   async function handleClearHistory() {
     if (!window.confirm(t('clearHistoryConfirm') || 'Clear all your chat history? This cannot be undone.')) return
+    stopSpeech()
     await clearChatHistory()
     historyLoadedRef.current = false
     const fresh = makeConversation(location.name)
@@ -422,7 +430,7 @@ export default function Assistant() {
             <div className="assistant-messages">
               <AnimatePresence initial={false}>
                 {active.messages.map((m, i) => (
-                  <ChatMessage key={i} role={m.role} content={m.content} />
+                  <ChatMessage key={i} id={`msg-${active?.id || 'chat'}-${i}`} role={m.role} content={m.content} />
                 ))}
               </AnimatePresence>
               {isTyping && <TypingIndicator />}

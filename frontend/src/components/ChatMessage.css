@@ -143,6 +143,93 @@
   30% { transform: translateY(-4px); opacity: 1; }
 }
 
+/* ── Speaker / TTS Button inside Assistant Bubble ──────────────────── */
+.chat-message-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 6px;
+  padding-top: 4px;
+}
+
+.chat-speech-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 8px;
+  background: rgba(14, 165, 233, 0.07);
+  border: 1px solid rgba(14, 165, 233, 0.18);
+  border-radius: 20px;
+  color: var(--color-cyan-dark);
+  cursor: pointer;
+  font-size: 0.75rem;
+  line-height: 1;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chat-speech-btn:hover {
+  background: rgba(14, 165, 233, 0.16);
+  border-color: var(--color-cyan);
+  color: var(--color-navy);
+  transform: scale(1.05);
+}
+
+.chat-speech-btn:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+}
+
+.chat-speech-btn.speaking {
+  background: var(--gradient-brand, linear-gradient(135deg, #0284c7 0%, #06b6d4 100%));
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.45);
+  animation: speech-pulse 2s infinite ease-in-out;
+}
+
+.speech-wave-anim {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 10px;
+}
+
+.speech-wave-anim .wave-bar {
+  display: inline-block;
+  width: 2px;
+  height: 100%;
+  background: currentColor;
+  border-radius: 1px;
+  animation: wave-bar-bounce 1s infinite ease-in-out;
+}
+
+.speech-wave-anim .wave-bar:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.speech-wave-anim .wave-bar:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes wave-bar-bounce {
+  0%, 100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes speech-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(14, 165, 233, 0.65);
+  }
+}
+
 @media (max-width: 720px) {
   .chat-message {
     max-width: 90%;

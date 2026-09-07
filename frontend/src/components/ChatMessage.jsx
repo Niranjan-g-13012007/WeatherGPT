@@ -1,5 +1,8 @@
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { CloudSun, User } from 'lucide-react'
+import { CloudSun, User, Volume2, VolumeX } from 'lucide-react'
+import { toggleSpeak, subscribeSpeechState, getActiveSpeakingId } from '../utils/speechUtils.js'
+import { useLanguage } from '../context/LanguageContext.jsx'
 import './ChatMessage.css'
 
 /**
@@ -140,8 +143,24 @@ function parseInline(text) {
   return parts.length === 1 ? parts[0] : parts
 }
 
-export default function ChatMessage({ role, content }) {
+export default function ChatMessage({ id, role, content }) {
   const isUser = role === 'user'
+  const langContext = useLanguage()
+  const language = langContext?.language || 'en'
+  const messageId = id || `msg-${typeof content === 'string' ? content.slice(0, 40) : Math.random()}`
+
+  const [isSpeaking, setIsSpeaking] = useState(() => getActiveSpeakingId() === messageId)
+
+  useEffect(() => {
+    return subscribeSpeechState((activeId) => {
+      setIsSpeaking(activeId === messageId)
+    })
+  }, [messageId])
+
+  const handleToggleSpeech = (e) => {
+    e.stopPropagation()
+    toggleSpeak(messageId, content, language)
+  }
 
   return (
     <motion.div
@@ -156,7 +175,35 @@ export default function ChatMessage({ role, content }) {
         </div>
       )}
       <div className="chat-message-bubble">
-        {isUser ? content : <div className="chat-md-content">{parseMarkdown(content)}</div>}
+        {isUser ? (
+          content
+        ) : (
+          <>
+            <div className="chat-md-content">{parseMarkdown(content)}</div>
+            <div className="chat-message-footer">
+              <button
+                type="button"
+                className={`chat-speech-btn ${isSpeaking ? 'speaking' : ''}`}
+                onClick={handleToggleSpeech}
+                title={isSpeaking ? 'Stop reading' : 'Read response aloud'}
+                aria-label={isSpeaking ? 'Stop reading' : 'Read response aloud'}
+              >
+                {isSpeaking ? (
+                  <>
+                    <VolumeX size={13} strokeWidth={2.2} className="speech-icon" />
+                    <span className="speech-wave-anim" aria-hidden="true">
+                      <span className="wave-bar" />
+                      <span className="wave-bar" />
+                      <span className="wave-bar" />
+                    </span>
+                  </>
+                ) : (
+                  <Volume2 size={13} strokeWidth={2.2} className="speech-icon" />
+                )}
+              </button>
+            </div>
+          </>
+        )}
       </div>
       {isUser && (
         <div className="chat-message-avatar user">
